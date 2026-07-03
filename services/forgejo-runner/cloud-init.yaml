@@ -1,0 +1,25 @@
+#cloud-config
+# Forgejo Runner VPS provisioning — Rackforest VPS, Ubuntu 24.04 LTS
+# A gép Dokploy remote serverként üzemel (ADR-0003): Dockert és Traefiket a
+# Dokploy "remote server setup" telepíti, a runnert Dokploy compose deployolja.
+# A cloud-init itt csak: hostname + SSH hardening — más dolga nincs.
+# VPS-létrehozáskor a Rackforest panel kulcsmezőjébe KÉT kulcs kerül:
+# a saját SSH kulcsod ÉS a Dokploy-ban generált kulcs public fele.
+# Secret NEM kerülhet ebbe a fájlba (ADR-0002).
+
+hostname: PTE-Forgejo-Runner
+
+ssh_pwauth: false
+
+package_update: true
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/99-hardening.conf
+    permissions: "0644"
+    content: |
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin prohibit-password
+
+runcmd:
+  - systemctl restart ssh

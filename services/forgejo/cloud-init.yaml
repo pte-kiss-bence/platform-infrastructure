@@ -1,0 +1,108 @@
+#cloud-config
+# Forgejo VPS provisioning — Rackforest VPS, Ubuntu 24.04 LTS
+# A gép Dokploy remote serverként üzemel (ADR-0003): Dockert és Traefiket a
+# Dokploy "remote server setup" telepíti, a Forgejo-t Dokploy compose deployolja.
+# A cloud-init itt csak: hostname, SSH hardening, bootstrap script kiírása.
+# VPS-létrehozáskor a Rackforest panel kulcsmezőjébe KÉT kulcs kerül:
+# a saját SSH kulcsod ÉS a Dokploy-ban generált kulcs public fele — kulcs
+# nélkül kizárod magad, Dokploy-kulcs nélkül a remote setup nem tud belépni.
+# Secret NEM kerülhet ebbe a fájlba (ADR-0002).
+
+hostname: PTE-Forgejo
+
+ssh_pwauth: false
+
+package_update: true
+packages:
+  - openssl
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/99-hardening.conf
+    permissions: "0644"
+    content: |
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin prohibit-password
+
+  - path: /usr/local/sbin/forgejo-bootstrap.sh
+    permissions: "0700"
+    owner: root:root
+    content: |
+      #!/bin/bash
+      # Forgejo bootstrap — az ELSŐ sikeres Dokploy deploy UTÁN futtatandó, kézzel:
+      #   /usr/local/sbin/forgejo-bootstrap.sh
+      # Két dolga van (mindkettő idempotens):
+      #   1. initial admin user létrehozása, jelszó hoston generálva
+      #      -> /root/forgejo-admin-credentials (0600)
+      #   2. runner shared secret generálása + regisztrálása a Forgejo-ban
+      #      -> /root/forgejo-runner-secret (0600) — a SECRET és UUID innen
+      #         kerül át kézzel a Dokploy runner service env-jébe.
+      set -u
+
+      DOMAIN="git.pte-dev.hu"
+      ADMIN_USER="forgejo-admin"
+      ADMIN_EMAIL="git@pte-dev.hu"
+      RUNNER_NAME="pte-runner-1"
+      RUNNER_LABELS="ubuntu-latest:docker://ghcr.io/catthehacker/ubuntu:act-24.04,ubuntu-22.04:docker://ghcr.io/catthehacker/ubuntu:act-22.04"
+      ADMIN_CRED_FILE="/root/forgejo-admin-credentials"
+      RUNNER_SECRET_FILE="/root/forgejo-runner-secret"
+      STATUS_FILE="/root/forgejo-bootstrap-status"
+
+      log()    { echo "[$(date -Is)] $*"; }
+      status() { echo "$1" > "$STATUS_FILE"; log "STATUS: $1"; }
+      fail()   { status "FAILED: $*"; exit 1; }
+
+      # Forgejo konténer a Dokploy compose "forgejo" service-e.
+      find_container() {
+        docker ps -q --filter "label=com.docker.compose.service=forgejo" | head -n1
+      }
+
+      status "CONTAINER_WAIT"
+      CID=""
+      for _ in $(seq 1 60); do
+        CID=$(find_container)
+        [ -n "$CID" ] && break
+        sleep 5
+      done
+      [ -n "$CID" ] || fail "nem fut forgejo konténer — előbb deployold Dokploy-ból"
+
+      # Várunk, míg a Forgejo webszerver (és így a DB-migráció) él.
+      for _ in $(seq 1 60); do
+        docker exec "$CID" wget -q -O /dev/null http://localhost:3000/ && break
+        sleep 5
+      done
+      docker exec "$CID" wget -q -O /dev/null http://localhost:3000/ \
+        || fail "Forgejo nem válaszol a konténerben a :3000-en — nézd a Dokploy logot"
+
+      if [ -f "$ADMIN_CRED_FILE" ]; then
+        log "Admin credentials fájl már létezik, admin létrehozás kihagyva."
+      else
+        status "ADMIN_BOOTSTRAP"
+        PASSWORD=$(openssl rand -base64 32 | tr -d '=+/' | cut -c1-24)
+        docker exec -u git "$CID" forgejo admin user create \
+          --admin --username "$ADMIN_USER" --email "$ADMIN_EMAIL" \
+          --password "$PASSWORD" \
+          || fail "admin user create hibával állt le"
+        ( umask 077; printf 'url: https://%s\nuser: %s\nemail: %s\npassword: %s\n' \
+            "$DOMAIN" "$ADMIN_USER" "$ADMIN_EMAIL" "$PASSWORD" > "$ADMIN_CRED_FILE" )
+        log "Admin létrehozva (első belépéskor jelszócserét kér), credentials: ${ADMIN_CRED_FILE}"
+      fi
+
+      status "RUNNER_REGISTER"
+      if [ -f "$RUNNER_SECRET_FILE" ]; then
+        SECRET=$(awk '/^secret:/{print $2}' "$RUNNER_SECRET_FILE")
+        log "Runner secret fájl már létezik, meglévő secret újra-regisztrálása (idempotens)."
+      else
+        SECRET=$(openssl rand -hex 20)
+      fi
+      UUID=$(docker exec -u git "$CID" forgejo forgejo-cli actions register \
+        --name "$RUNNER_NAME" --secret "$SECRET" --labels "$RUNNER_LABELS" | tail -n1)
+      [ -n "$UUID" ] || fail "runner regisztráció nem adott vissza UUID-t"
+      ( umask 077; printf 'name: %s\nsecret: %s\nuuid: %s\n' \
+          "$RUNNER_NAME" "$SECRET" "$UUID" > "$RUNNER_SECRET_FILE" )
+      log "Runner regisztrálva. A Dokploy runner service env-jébe: RUNNER_SECRET=${SECRET} RUNNER_UUID=${UUID}"
+
+      status "SUCCESS"
+
+runcmd:
+  - systemctl restart ssh

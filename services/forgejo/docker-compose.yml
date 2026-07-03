@@ -1,0 +1,77 @@
+# Forgejo — Dokploy compose service a PTE-Forgejo remote szerveren.
+# Forrás-igazság ez a fájl; Dokploy-ba raw compose-ként kerül BEILLESZTÉSSEL
+# (ADR-0003: a git-szerver compose-a nem jöhet git-szerverből).
+# Dokploy env-ben megadandó (Environment fül):
+#   POSTGRES_PASSWORD   — generált erős jelszó (pl. openssl rand -base64 24)
+#   MAILJET_API_KEY     — Mailjet API key   (SMTP user)
+#   MAILJET_API_SECRET  — Mailjet API secret (SMTP jelszó)
+# Domain a Dokploy-ban: git.pte-dev.hu -> forgejo service, port 3000,
+# Let's Encrypt (email: dokploy@pte-dev.hu).
+
+services:
+  forgejo:
+    image: codeberg.org/forgejo/forgejo:15
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      USER_UID: "1000"
+      USER_GID: "1000"
+      # Web-installer kikapcsolva — minden config innen jön, admint a
+      # forgejo-bootstrap.sh hozza létre (ADR-0003).
+      FORGEJO__security__INSTALL_LOCK: "true"
+      FORGEJO__database__DB_TYPE: postgres
+      FORGEJO__database__HOST: db:5432
+      FORGEJO__database__NAME: forgejo
+      FORGEJO__database__USER: forgejo
+      FORGEJO__database__PASSWD: ${POSTGRES_PASSWORD}
+      FORGEJO__server__DOMAIN: git.pte-dev.hu
+      FORGEJO__server__ROOT_URL: https://git.pte-dev.hu/
+      FORGEJO__server__HTTP_PORT: "3000"
+      # Konténeren belül a 22-n fut az sshd, kifelé a host 2222-t hirdetjük
+      # (host 22 = admin + Dokploy SSH; konvenció: konténer-SSH 2222-től).
+      FORGEJO__server__SSH_DOMAIN: git.pte-dev.hu
+      FORGEJO__server__SSH_PORT: "2222"
+      FORGEJO__service__DISABLE_REGISTRATION: "true"
+      FORGEJO__actions__ENABLED: "true"
+      FORGEJO__mailer__ENABLED: "true"
+      FORGEJO__mailer__PROTOCOL: smtp+starttls
+      FORGEJO__mailer__SMTP_ADDR: in-v3.mailjet.com
+      FORGEJO__mailer__SMTP_PORT: "587"
+      FORGEJO__mailer__FROM: Forgejo <git@pte-dev.hu>
+      FORGEJO__mailer__USER: ${MAILJET_API_KEY}
+      FORGEJO__mailer__PASSWD: ${MAILJET_API_SECRET}
+    ports:
+      - "2222:22"
+    volumes:
+      - forgejo-data:/data
+    networks:
+      - default
+      - dokploy-network
+
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: forgejo
+      POSTGRES_USER: forgejo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      # PG18-tól a mount pont a szülőkönyvtár (nem .../data): a PGDATA a
+      # verziózott /var/lib/postgresql/18/docker alá kerül, így a későbbi
+      # majorváltás in-place pg_upgrade-del mehet, dump/restore nélkül.
+      - forgejo-db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U forgejo -d forgejo"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  forgejo-data:
+  forgejo-db:
+
+networks:
+  dokploy-network:
+    external: true
