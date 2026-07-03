@@ -1,0 +1,7 @@
+{
+  "name": "@pte-politechnika/platform-infrastructure",
+  "version": "1.0.0",
+  "description": "Infrastructure of PTE Politechnika",
+  "private": true,
+  "scripts": {}
+}

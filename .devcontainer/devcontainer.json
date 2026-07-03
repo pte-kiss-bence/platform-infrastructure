@@ -1,0 +1,46 @@
+{
+  "name": "PTE Devcontainer",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "runArgs": [
+    "--env-file",
+    ".devcontainer/.env",
+    "--name",
+    "${localWorkspaceFolderBasename}",
+    "--hostname",
+    "${localWorkspaceFolderBasename}"
+  ],
+  "features": {
+    "ghcr.io/devcontainers/features/node:2": {},
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
+      "moby": false
+    },
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1": {}
+  },
+  "mounts": [
+    "source=${localEnv:HOME}/.claude-devcontainer/${localWorkspaceFolderBasename},target=/home/vscode/.claude-devcontainer,type=bind"
+  ],
+  "remoteEnv": {
+    "CLAUDE_CONFIG_DIR": "/home/vscode/.claude-devcontainer"
+  },
+  "initializeCommand": "sh .devcontainer/init.sh '${localWorkspaceFolderBasename}'",
+  "postCreateCommand": "sh .devcontainer/post-create.sh",
+  "postStartCommand": "sh .devcontainer/fix-permissions.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "aaron-bond.better-comments",
+        "angular.ng-template",
+        "Anthropic.claude-code",
+        "bradlc.vscode-tailwindcss",
+        "dbaeumer.vscode-eslint",
+        "eamodio.gitlens",
+        "esbenp.prettier-vscode",
+        "stylelint.vscode-stylelint"
+      ],
+      "settings": {
+        "claudeCode.allowDangerouslySkipPermissions": true,
+        "claudeCode.initialPermissionMode": "bypassPermissions"
+      }
+    }
+  }
+}
