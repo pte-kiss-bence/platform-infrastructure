@@ -12,6 +12,12 @@
       "sourceType": "github",
       "skillPath": "skills/caveman-commit/SKILL.md",
       "computedHash": "790a4eeace0be35c6691faf923518ba5bd50f1f1305d1101d09dd4971be94e00"
+    },
+    "prompt-master": {
+      "source": "nidhinjs/prompt-master",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "066569806dfbd7c0e785ba20453373d393ffae84b68db4ad53e7b020c87fe373"
     }
   }
 }
