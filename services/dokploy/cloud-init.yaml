@@ -5,6 +5,11 @@
 # Nincs placeholder: az SSH kulcsot a Rackforest panel injektálja a root userhez
 # VPS-létrehozáskor — a kulcs mező kitöltése ott KÖTELEZŐ, különben kizárod magad.
 # Secret NEM kerülhet ebbe a fájlba (ADR-0002).
+# VPN-világban (ADR-0004/0007): a dokploy.pte-dev.hu-nak NINCS publikus DNS
+# rekordja, ezért az "all" fázis az admin bootstrapnél megáll — a domain/cert
+# (wildcard, DNS-01), a privát L2, a tailnet-join és a tűzfal a
+# docs/runbooks/vpn-atallas.md szerint megy. A "domain" fázis legacy: csak
+# publikus DNS + LE HTTP challenge mellett működik.
 
 hostname: PTE-Dokploy
 
@@ -15,6 +20,7 @@ packages:
   - curl
   - dnsutils
   - openssl
+  - ufw
 
 write_files:
   - path: /etc/ssh/sshd_config.d/99-hardening.conf
@@ -150,23 +156,26 @@ write_files:
         all)
           install_dokploy
           bootstrap_admin
-          if wait_for_dns; then
-            assign_domain
-            close_port_3000
-            status "SUCCESS"
-          else
-            status "PARTIAL: DNS timeout — vidd fel az A rekordot (${DOMAIN} -> ${SERVER_IP}), majd: dokploy-provision.sh domain"
-          fi
+          # VPN-világban (ADR-0007) nincs publikus DNS a panelhez — a domain,
+          # a wildcard cert és a tűzfal a vpn-átállás runbook lépése. A :3000
+          # addig nyitva marad, zárása a runbook szerint: dokploy-provision.sh close3000
+          status "SUCCESS: admin kész — folytatás: docs/runbooks/vpn-atallas.md (tailnet-join, wildcard cert, tűzfal, majd close3000)"
           ;;
         domain)
+          # LEGACY: publikus DNS rekord + LE HTTP challenge kell hozzá —
+          # a VPN-átállás (ADR-0004/0007) óta normál üzemben nem használt.
           wait_for_panel || fail "panel nem elérhető a :3000-en"
           wait_for_dns || fail "a DNS még mindig nem a szerver IP-jére mutat"
           assign_domain
           close_port_3000
           status "SUCCESS"
           ;;
+        close3000)
+          close_port_3000
+          status "SUCCESS: :3000 zárva"
+          ;;
         *)
-          echo "használat: $0 [all|domain]"; exit 2 ;;
+          echo "használat: $0 [all|domain|close3000]"; exit 2 ;;
       esac
 
 runcmd:

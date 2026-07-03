@@ -1,0 +1,80 @@
+#cloud-config
+# Backup gép provisioning — PTE-Backup, Rackforest VPS, Ubuntu 24.04 LTS
+# (ADR-0008): restic rest-server append-only módban. A gép a platformtól
+# független: NEM Dokploy remote server — azt a rendszert, amiből
+# helyreállítunk, nem kezelheti az, amit helyreállít.
+# Hálózat: privát L2 (a platform-gépek itt mentenek) + tailnet (a beléptető
+# réteg dumpja és az admin-elérés útja) — a csatolás/join runbook-lépés.
+# Publikus portja nem marad.
+# Az SSH kulcsot a Rackforest panel injektálja — kötelező kitölteni.
+# Secret NEM kerülhet ebbe a fájlba (ADR-0002): a repo-userek jelszavai
+# (htpasswd) runbook-lépésben jönnek létre.
+
+hostname: PTE-Backup
+
+ssh_pwauth: false
+
+package_update: true
+packages:
+  - curl
+  - apache2-utils
+  - ufw
+  - restic
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/99-hardening.conf
+    permissions: "0644"
+    content: |
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin prohibit-password
+
+  - path: /opt/backup/docker-compose.yml
+    permissions: "0644"
+    content: |
+      # restic rest-server — forrás-igazság: platform-infrastructure repo,
+      # services/backup/. Append-only: a mentést küldő gép csak írni tud,
+      # törölni nem (ADR-0008). Private repos: minden gép csak a saját
+      # repóját éri el a saját htpasswd-userével.
+      services:
+        rest-server:
+          image: restic/rest-server:0.14
+          restart: unless-stopped
+          environment:
+            OPTIONS: "--append-only --private-repos"
+          ports:
+            - "8000:8000"
+          volumes:
+            - ./data:/data
+
+  - path: /usr/local/sbin/backup-provision.sh
+    permissions: "0700"
+    owner: root:root
+    content: |
+      #!/bin/bash
+      set -u
+      STATUS_FILE="/root/backup-provision-status"
+      status() { echo "$1" > "$STATUS_FILE"; echo "[$(date -Is)] STATUS: $1"; }
+      fail()   { status "FAILED: $*"; exit 1; }
+
+      status "DOCKER_INSTALL"
+      command -v docker >/dev/null || curl -fsSL https://get.docker.com | sh \
+        || fail "Docker telepítés nem sikerült"
+
+      status "TAILSCALE_INSTALL"
+      command -v tailscale >/dev/null || curl -fsSL https://tailscale.com/install.sh | sh \
+        || fail "Tailscale telepítés nem sikerült"
+
+      mkdir -p /opt/backup/data
+      # üres htpasswd, hogy a rest-server elinduljon; usereket a runbook ad
+      touch /opt/backup/data/.htpasswd
+
+      status "COMPOSE_UP"
+      cd /opt/backup || fail "nincs /opt/backup"
+      docker compose up -d || fail "docker compose up hibával állt le"
+
+      status "SUCCESS: folytatás a services/backup/RUNBOOK.md szerint (tailnet-join, repo-userek, tűzfal)"
+
+runcmd:
+  - systemctl restart ssh
+  - /usr/local/sbin/backup-provision.sh >> /var/log/backup-provision.log 2>&1

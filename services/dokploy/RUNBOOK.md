@@ -2,7 +2,16 @@
 
 A [cloud-init.yaml](cloud-init.yaml) körüli kézi lépések. A provisioning flow maga felügyelet nélkül fut első bootkor; ez a dokumentum azt írja le, mit kell tenned előtte, közben és utána.
 
-Kapcsolódó döntések: [ADR-0001](../../docs/adr/0001-automated-dokploy-admin-via-signup-api.md) (admin bootstrap), [ADR-0002](../../docs/adr/0002-no-secrets-in-cloud-init-user-data.md) (secret-kezelés).
+Kapcsolódó döntések: [ADR-0001](../../docs/adr/0001-automatizalt-dokploy-admin-letrehozas.md) (admin bootstrap), [ADR-0002](../../docs/adr/0002-nincs-secret-a-cloud-init-user-databan.md) (secret-kezelés).
+
+> **VPN-világ (ADR-0004–0009):** a platform átállt hálózati láthatatlanságra — a
+> panelnek nincs publikus DNS rekordja, a domain/cert lépések helyett a
+> [docs/runbooks/vpn-atallas.md](../../docs/runbooks/vpn-atallas.md) érvényes.
+> A **2. és 4. lépés** (publikus DNS + LE HTTP challenge) legacy: friss
+> provisionálásnál hagyd ki — az `all` fázis az admin bootstrap után
+> `SUCCESS`-szel megáll, a domain/cert/tűzfal (és a `:3000` zárása a
+> `close3000` fázissal) a vpn-átállás runbook szerint megy. A panel addig a
+> `http://<VPS_IP>:3000` címen érhető el.
 
 ## 1. Előkészítés
 
@@ -25,7 +34,7 @@ cat /root/dokploy-provision-status
 tail -f /var/log/dokploy-provision.log
 ```
 
-Státuszok: `INSTALL` → `ADMIN_BOOTSTRAP` → `DNS_WAIT` → `DOMAIN_ASSIGN` → `CERT_WAIT` → `PORT_CLOSE` → `SUCCESS`. Hibánál `FAILED: <ok>`, DNS-timeoutnál `PARTIAL`.
+Státuszok az `all` fázisban: `INSTALL` → `ADMIN_BOOTSTRAP` → `SUCCESS`. A `DNS_WAIT` → `DOMAIN_ASSIGN` → `CERT_WAIT` → `PORT_CLOSE` lánc csak a legacy `domain` fázisban fut. Hibánál `FAILED: <ok>`.
 
 ## 4. PARTIAL: DNS nem állt be időben
 
@@ -41,7 +50,10 @@ Ha a státusz `PARTIAL`, a telepítés és az admin bootstrap kész, csak a doma
 cat /root/dokploy-admin-credentials
 ```
 
-Belépés: <https://dokploy.pte-dev.hu>, email `dokploy@pte-dev.hu` + a generált jelszó. Első belépés után érdemes a jelszót a UI-ban sajátra rotálni.
+Belépés friss (VPN-világú) provisionálásnál: `http://<VPS_IP>:3000` — a
+`https://dokploy.pte-dev.hu` cím csak a tailnet-elérés élesítése után megy
+(vpn-átállás runbook). Email `dokploy@pte-dev.hu` + a generált jelszó. Első
+belépés után érdemes a jelszót a UI-ban sajátra rotálni.
 
 ## 6. SMTP beállítás (kézi, ADR-0002)
 
@@ -60,12 +72,23 @@ Teszt-emaillel ellenőrizd. (Bejövő irány ImprovMX forward, Dokploy-t nem ér
 
 ## 7. Verifikáció
 
+Friss (VPN-világú) provisionálásnál az `all` fázis után:
+
+```bash
+cat /root/dokploy-provision-status                   # SUCCESS
+curl -sI http://<VPS_IP>:3000/ | head -1             # HTTP/1.1 200 — a panel él
+```
+
+A `:3000` ilyenkor **szándékosan nyitva van** — zárása (`close3000` fázis) és a
+`dokploy.pte-dev.hu` + wildcard cert élesítése a
+[vpn-átállás runbook](../../docs/runbooks/vpn-atallas.md) 6. és 9. fázisa.
+
+Csak a legacy `domain` fázis után értelmes:
+
 ```bash
 curl -sI https://dokploy.pte-dev.hu | head -1        # HTTP/2 200 vagy 307
 curl -m 5 http://<VPS_IP>:3000/ ; echo "exit: $?"    # timeout kell legyen (port zárva)
 ```
-
-Plusz: UI-ban Settings → Server ellenőrzés, hogy a domain és a Let's Encrypt cert él.
 
 ## 8. Hibaelhárítás
 

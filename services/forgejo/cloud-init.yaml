@@ -7,6 +7,8 @@
 # a saját SSH kulcsod ÉS a Dokploy-ban generált kulcs public fele — kulcs
 # nélkül kizárod magad, Dokploy-kulcs nélkül a remote setup nem tud belépni.
 # Secret NEM kerülhet ebbe a fájlba (ADR-0002).
+# VPN-világban (ADR-0004/0005): a gépet a privát L2-re is csatolni kell, a
+# tailnet-join és a tűzfal zárás a docs/runbooks/vpn-atallas.md lépése.
 
 hostname: PTE-Forgejo
 
@@ -15,6 +17,7 @@ ssh_pwauth: false
 package_update: true
 packages:
   - openssl
+  - ufw
 
 write_files:
   - path: /etc/ssh/sshd_config.d/99-hardening.conf

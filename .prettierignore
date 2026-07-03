@@ -1,0 +1,4 @@
+.agents
+.claude
+.pnpm-store
+node_modules

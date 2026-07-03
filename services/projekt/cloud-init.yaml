@@ -1,0 +1,36 @@
+#cloud-config
+# Projekt-VPS provisioning SABLON — Rackforest VPS, Ubuntu 24.04 LTS
+# (ADR-0009): minden app-projekt már az indulástól egy dedikált Dokploy
+# remote servert kap, rajta a projekt mindhárom környezetével (prod, staging,
+# preview). A csapat saját belső tool-gépe (PTE-Shared, a saját infra része)
+# technikailag ugyanezzel a sablonnal jön létre.
+#
+# HASZNÁLAT: a hostname-t írd át a projekt nevére (PTE-<Projekt>,
+# pl. PTE-Neptun2) — más módosítás nem kell.
+#
+# Dockert és Traefiket a Dokploy "remote server setup" telepíti, az app-okat
+# Dokploy deployolja (ADR-0003 minta). A cloud-init itt csak: hostname + SSH
+# hardening. VPS-létrehozáskor a Rackforest panel kulcsmezőjébe KÉT kulcs
+# kerül: a saját SSH kulcsod ÉS a Dokploy-ban generált kulcs public fele.
+# A gépet a Rackforest privát L2 hálózatra is csatolni kell (ADR-0005);
+# a tailnet-join, a zóna-cert és a tűzfal a RUNBOOK.md lépése.
+# Secret NEM kerülhet ebbe a fájlba (ADR-0002).
+
+hostname: PTE-Projektnev
+
+ssh_pwauth: false
+
+package_update: true
+packages:
+  - ufw
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/99-hardening.conf
+    permissions: "0644"
+    content: |
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin prohibit-password
+
+runcmd:
+  - systemctl restart ssh

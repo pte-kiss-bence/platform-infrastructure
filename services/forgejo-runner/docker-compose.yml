@@ -1,4 +1,4 @@
-# Forgejo Runner — Dokploy compose service a PTE-Forgejo-Runner remote szerveren.
+# Forgejo Runner — Dokploy compose service a PTE-Forgejo-Runner-1 remote szerveren.
 # Hivatalos DinD minta (forgejo.org/docs: admin/actions/installation/docker):
 # a CI jobok a docker-in-docker konténerben futnak, a host Dockerhez
 # (amit a Dokploy kezel) a jobok nem érnek hozzá.
@@ -6,6 +6,10 @@
 # /root/forgejo-runner-secret fájljából (forgejo-bootstrap.sh írja ki):
 #   RUNNER_SECRET  — 40 hex karakteres shared secret
 #   RUNNER_UUID    — a regisztráció által visszaadott UUID
+#   FORGEJO_L2_IP  — a Forgejo VPS privát L2 címe: a konténerek NEM öröklik
+#                    a host /etc/hosts-át, ezért a git.pte-dev.hu feloldását
+#                    extra_hosts (dind, runner) és --add-host (job-konténerek,
+#                    a runner-configban) adja
 # A runner-init csak első indításkor ír configot; env-csere után töröld a
 # runner-data volume-ot vagy a /data/runner-config.yml fájlt, és redeployolj.
 
@@ -15,6 +19,8 @@ services:
     privileged: true
     command: ["dockerd", "-H", "tcp://0.0.0.0:2375", "--tls=false"]
     restart: unless-stopped
+    extra_hosts:
+      - "git.pte-dev.hu:${FORGEJO_L2_IP}"
     volumes:
       - dind-data:/var/lib/docker
 
@@ -25,6 +31,9 @@ services:
       FORGEJO_INSTANCE_URL: https://git.pte-dev.hu/
       RUNNER_SECRET: ${RUNNER_SECRET}
       RUNNER_UUID: ${RUNNER_UUID}
+      FORGEJO_L2_IP: ${FORGEJO_L2_IP}
+    extra_hosts:
+      - "git.pte-dev.hu:${FORGEJO_L2_IP}"
     volumes:
       - runner-data:/data
     command:
@@ -33,8 +42,8 @@ services:
       - |
         set -e
         if [ ! -f /data/runner-config.yml ]; then
-          printf 'log:\n  level: info\nrunner:\n  capacity: 2\n  timeout: 1h\nserver:\n  connections:\n    forgejo:\n      url: %s\n      uuid: %s\n      token: %s\n' \
-            "$$FORGEJO_INSTANCE_URL" "$$RUNNER_UUID" "$$RUNNER_SECRET" > /data/runner-config.yml
+          printf 'log:\n  level: info\nrunner:\n  capacity: 2\n  timeout: 1h\ncontainer:\n  options: "--add-host=git.pte-dev.hu:%s"\nserver:\n  connections:\n    forgejo:\n      url: %s\n      uuid: %s\n      token: %s\n' \
+            "$$FORGEJO_L2_IP" "$$FORGEJO_INSTANCE_URL" "$$RUNNER_UUID" "$$RUNNER_SECRET" > /data/runner-config.yml
           echo "runner-config.yml létrehozva"
         fi
         chown -R 1001:1001 /data
@@ -49,6 +58,8 @@ services:
         condition: service_started
     environment:
       DOCKER_HOST: tcp://docker-in-docker:2375
+    extra_hosts:
+      - "git.pte-dev.hu:${FORGEJO_L2_IP}"
     user: 1001:1001
     working_dir: /data
     volumes:

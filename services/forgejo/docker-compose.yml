@@ -5,8 +5,9 @@
 #   POSTGRES_PASSWORD   — generált erős jelszó (pl. openssl rand -base64 24)
 #   MAILJET_API_KEY     — Mailjet API key   (SMTP user)
 #   MAILJET_API_SECRET  — Mailjet API secret (SMTP jelszó)
-# Domain a Dokploy-ban: git.pte-dev.hu -> forgejo service, port 3000,
-# Let's Encrypt (email: dokploy@pte-dev.hu).
+# Domain a Dokploy-ban: git.pte-dev.hu -> forgejo service, port 3000.
+# Cert: a VPN-átállásig Let's Encrypt (email: dokploy@pte-dev.hu), utána
+# certificate: none — a gép wildcard certje fedi (ADR-0007).
 
 services:
   forgejo:
@@ -35,6 +36,9 @@ services:
       FORGEJO__server__SSH_PORT: "2222"
       FORGEJO__service__DISABLE_REGISTRATION: "true"
       FORGEJO__actions__ENABLED: "true"
+      # Beépített OCI/container registry (a platform docker registry-je):
+      # docker login git.pte-dev.hu — image-cím: git.pte-dev.hu/<owner>/<image>
+      FORGEJO__packages__ENABLED: "true"
       FORGEJO__mailer__ENABLED: "true"
       FORGEJO__mailer__PROTOCOL: smtp+starttls
       FORGEJO__mailer__SMTP_ADDR: in-v3.mailjet.com
@@ -51,7 +55,7 @@ services:
       - dokploy-network
 
   db:
-    image: postgres:18
+    image: postgres:18-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: forgejo

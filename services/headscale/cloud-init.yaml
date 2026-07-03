@@ -1,0 +1,338 @@
+#cloud-config
+# Beléptető réteg provisioning flow — PTE-Headscale VPS, Ubuntu 24.04 LTS
+# (ADR-0004, ADR-0005, ADR-0006)
+#
+# Ez a gép NEM Dokploy remote server és NINCS a privát L2-n: a beléptető
+# réteg (Headscale + Pocket ID + tailnet-resolver) a platformtól függetlenül
+# él. A két publikus kivétel (vpn.pte-dev.hu, id.pte-dev.hu) itt lakik.
+#
+# Az SSH kulcsot a Rackforest panel injektálja a root userhez — kötelező.
+# Secret NEM kerülhet ebbe a fájlba (ADR-0002): a headscale OIDC client
+# secret, a restic jelszó és a pre-auth kulcsok mind runbook-lépések.
+#
+# A cloud-init után a headscale OIDC NÉLKÜL indul (a config oidc blokkja
+# kommentben van) — az élesítés sorrendje a RUNBOOK.md-ben.
+
+hostname: PTE-Headscale
+
+ssh_pwauth: false
+
+package_update: true
+packages:
+  - curl
+  - openssl
+  - sqlite3
+  - dnsmasq
+  - ufw
+  - restic
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/99-hardening.conf
+    permissions: "0644"
+    content: |
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin prohibit-password
+
+  # ---- docker compose: caddy + headscale + pocket-id -----------------------
+  - path: /opt/headscale/docker-compose.yml
+    permissions: "0644"
+    content: |
+      # Beléptető réteg — forrás-igazság: platform-infrastructure repo,
+      # services/headscale/. Módosítás a repóban, majd kézi átvezetés ide
+      # (a Dokploy compose-okkal azonos konvenció).
+      services:
+        caddy:
+          image: caddy:2.11-alpine
+          restart: unless-stopped
+          ports:
+            - "80:80"
+            - "443:443"
+          volumes:
+            - ./config/Caddyfile:/etc/caddy/Caddyfile:ro
+            - ./data/caddy:/data
+            - ./data/caddy-config:/config
+
+        headscale:
+          image: headscale/headscale:0.29
+          restart: unless-stopped
+          command: serve
+          ports:
+            # STUN a beépített DERP-hez; a DERP maga a 443-on megy a Caddy mögött
+            - "3478:3478/udp"
+          volumes:
+            - ./config/headscale.yaml:/etc/headscale/config.yaml:ro
+            - ./config/acl-policy.hujson:/etc/headscale/acl-policy.hujson:ro
+            - ./config/oidc_client_secret:/etc/headscale/oidc_client_secret:ro
+            - ./data/headscale:/var/lib/headscale
+
+        pocket-id:
+          image: ghcr.io/pocket-id/pocket-id:v2.9
+          restart: unless-stopped
+          environment:
+            APP_URL: https://id.pte-dev.hu
+            TRUST_PROXY: "true"
+            # v2 óta kötelező; a kulcsot a provision script generálja a
+            # hoston (ADR-0002 — secret nem kerül a cloud-init user-datába)
+            ENCRYPTION_KEY_FILE: /run/secrets/pocket-id-encryption-key
+          volumes:
+            - ./data/pocket-id:/app/data
+            - ./config/pocket-id-encryption-key:/run/secrets/pocket-id-encryption-key:ro
+
+  # ---- Caddy: TLS terminálás a két publikus névre ---------------------------
+  - path: /opt/headscale/config/Caddyfile
+    permissions: "0644"
+    content: |
+      {
+        email dokploy@pte-dev.hu
+      }
+
+      vpn.pte-dev.hu {
+        reverse_proxy headscale:8080
+      }
+
+      id.pte-dev.hu {
+        reverse_proxy pocket-id:1411
+      }
+
+  # ---- headscale config -----------------------------------------------------
+  # A __PUBLIC_IP__ placeholdert a provision script tölti ki.
+  # A __*_TAILNET_IP__ placeholderek a platform-gépek tailnet-joinja UTÁN
+  # töltendők ki (RUNBOOK / vpn-átállás runbook).
+  - path: /opt/headscale/config/headscale.yaml
+    permissions: "0644"
+    content: |
+      server_url: https://vpn.pte-dev.hu
+      listen_addr: 0.0.0.0:8080
+      metrics_listen_addr: 127.0.0.1:9090
+      grpc_listen_addr: 127.0.0.1:50443
+      grpc_allow_insecure: false
+
+      noise:
+        private_key_path: /var/lib/headscale/noise_private.key
+
+      prefixes:
+        v4: 100.64.0.0/10
+        v6: fd7a:115c:a1e0::/48
+
+      derp:
+        server:
+          # Saját DERP relay — külső (Tailscale) DERP-től nem függünk (ADR-0004)
+          enabled: true
+          region_id: 999
+          region_code: pte
+          region_name: PTE DERP
+          stun_listen_addr: 0.0.0.0:3478
+          private_key_path: /var/lib/headscale/derp_server_private.key
+          automatically_add_embedded_derp_region: true
+          ipv4: __PUBLIC_IP__
+        urls: []
+        paths: []
+
+      database:
+        type: sqlite
+        sqlite:
+          path: /var/lib/headscale/db.sqlite
+
+      policy:
+        mode: file
+        path: /etc/headscale/acl-policy.hujson
+
+      dns:
+        magic_dns: true
+        base_domain: ts.pte-dev.hu
+        nameservers:
+          global:
+            - 1.1.1.1
+            - 9.9.9.9
+          # Split DNS: a pte-dev.hu neveket a tailnet-resolver (dnsmasq ezen
+          # a gépen) oldja fel (ADR-0007). A cím e gép SAJÁT tailnet IP-je —
+          # a join után töltendő ki, addig kommentben marad.
+          #split:
+          #  pte-dev.hu:
+          #    - __HEADSCALE_TAILNET_IP__
+
+      # OIDC — Pocket ID (ADR-0006). Az élesítés runbook-lépés: előbb a
+      # Pocket ID-ban létre kell hozni a "headscale" OIDC klienst, a secretet
+      # a config/oidc_client_secret fájlba írni, majd ezt a blokkot a
+      # kommentből kivenni és a headscale konténert újraindítani.
+      #oidc:
+      #  issuer: https://id.pte-dev.hu
+      #  client_id: headscale
+      #  client_secret_path: /etc/headscale/oidc_client_secret
+      #  expiry: 90d
+
+      unix_socket: /var/run/headscale/headscale.sock
+      unix_socket_permission: "0770"
+
+      log:
+        level: info
+
+      logtail:
+        enabled: false
+
+  # ---- tailnet-resolver (dnsmasq) -------------------------------------------
+  # Wildcard split DNS a tailnet-klienseknek (ADR-0007). A placeholderek a
+  # gépek tailnet-joinja után töltendők ki; addig a dnsmasq NEM indul
+  # (a listen-address még nem létezik).
+  - path: /etc/dnsmasq.d/pte-tailnet.conf
+    permissions: "0644"
+    content: |
+      # Csak a tailnet-interfész IP-jén figyelünk — a publikus 53 zárva.
+      bind-interfaces
+      listen-address=__HEADSCALE_TAILNET_IP__
+      no-resolv
+
+      # Zóna-wildcardok (ADR-0009): gépenként EGY sor, ami a teljes zónát
+      # fedi (staging + preview is, akármilyen mélyen); a hosszabb egyezés
+      # nyer. A shared a csapat saját belső tool-gépe (infra):
+      address=/shared.pte-dev.hu/__SHARED_TAILNET_IP__
+      # App-projektenként (felvétel: services/projekt/RUNBOOK.md):
+      # address=/<projekt>.pte-dev.hu/<projekt-VPS tailnet IP>
+
+      # Explicit infra-nevek:
+      host-record=git.pte-dev.hu,__FORGEJO_TAILNET_IP__
+      host-record=dokploy.pte-dev.hu,__DOKPLOY_TAILNET_IP__
+      host-record=backup.pte-dev.hu,__BACKUP_TAILNET_IP__
+      # A beléptető réteg publikus nevei a tailneten belülről is a publikus
+      # IP-re mennek:
+      host-record=vpn.pte-dev.hu,__PUBLIC_IP__
+      host-record=id.pte-dev.hu,__PUBLIC_IP__
+
+  # ---- napi mentés a backup gépre (ADR-0008) --------------------------------
+  # Élesítés runbook-lépés: restic repo init + jelszó fájl + timer enable.
+  - path: /usr/local/sbin/beleptetoreteg-backup.sh
+    permissions: "0700"
+    owner: root:root
+    content: |
+      #!/bin/bash
+      # A beléptető réteg mutable state-jének napi mentése (ADR-0008):
+      # headscale DB + Pocket ID adat (userek, passkey-k, aláíró kulcsok).
+      # Cél: restic rest-server a backup gépen, append-only, a tailneten át.
+      set -euo pipefail
+
+      STAGE=/var/backups/beleptetoreteg-stage
+      DATA=/opt/headscale/data
+      REPO_FILE=/root/restic-beleptetoreteg-repo        # pl. rest:http://user:pass@backup.pte-dev.hu:8000/beleptetoreteg
+      PASS_FILE=/root/restic-beleptetoreteg-password
+
+      [ -s "$REPO_FILE" ] || { echo "nincs repo URL: $REPO_FILE"; exit 1; }
+      [ -s "$PASS_FILE" ] || { echo "nincs restic jelszó: $PASS_FILE"; exit 1; }
+
+      mkdir -p "$STAGE"
+
+      # SQLite-ok konzisztens másolata .backup-pal, minden más fájl rsync-kel
+      rsync -a --delete "$DATA/pocket-id/" "$STAGE/pocket-id/"
+      find "$DATA/pocket-id" -maxdepth 1 -name '*.db' | while read -r db; do
+        sqlite3 "$db" ".backup '$STAGE/pocket-id/$(basename "$db")'"
+      done
+      mkdir -p "$STAGE/headscale"
+      sqlite3 "$DATA/headscale/db.sqlite" ".backup '$STAGE/headscale/db.sqlite'"
+      cp -a "$DATA"/headscale/*.key "$STAGE/headscale/" 2>/dev/null || true
+      cp -a /opt/headscale/config "$STAGE/config"
+
+      restic -r "$(cat "$REPO_FILE")" --password-file "$PASS_FILE" \
+        backup "$STAGE" --tag beleptetoreteg
+      restic -r "$(cat "$REPO_FILE")" --password-file "$PASS_FILE" \
+        snapshots --latest 1 --tag beleptetoreteg
+
+  - path: /etc/systemd/system/beleptetoreteg-backup.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Belepteto reteg napi mentese a backup gepre (ADR-0008)
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/sbin/beleptetoreteg-backup.sh
+
+  - path: /etc/systemd/system/beleptetoreteg-backup.timer
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Belepteto reteg napi mentes idozito
+
+      [Timer]
+      OnCalendar=*-*-* 03:15:00
+      RandomizedDelaySec=15m
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+
+  # ---- provision script ------------------------------------------------------
+  - path: /usr/local/sbin/headscale-provision.sh
+    permissions: "0700"
+    owner: root:root
+    content: |
+      #!/bin/bash
+      # Beléptető réteg provisioning flow. Futtatás: cloud-init első bootkor.
+      set -u
+
+      STATUS_FILE="/root/headscale-provision-status"
+
+      log()    { echo "[$(date -Is)] $*"; }
+      status() { echo "$1" > "$STATUS_FILE"; log "STATUS: $1"; }
+      fail()   { status "FAILED: $*"; exit 1; }
+
+      SERVER_IP=$(curl -4fs --connect-timeout 5 https://ifconfig.io 2>/dev/null \
+        || curl -4fs --connect-timeout 5 https://icanhazip.com 2>/dev/null) || true
+      [ -n "${SERVER_IP:-}" ] || fail "publikus IP nem állapítható meg"
+      log "Szerver IP: ${SERVER_IP}"
+
+      status "CONFIG"
+      sed -i "s/__PUBLIC_IP__/${SERVER_IP}/" /opt/headscale/config/headscale.yaml
+      sed -i "s/__PUBLIC_IP__/${SERVER_IP}/" /etc/dnsmasq.d/pte-tailnet.conf
+
+      # A dnsmasq a tailnet-join utáni runbook-lépésig nem indulhat
+      systemctl disable --now dnsmasq || true
+
+      # OIDC secret placeholder, hogy a mount ne törjön; a valódi secret
+      # runbook-lépés (ADR-0002)
+      ( umask 077; mkdir -p /opt/headscale/config /opt/headscale/data
+        [ -f /opt/headscale/config/oidc_client_secret ] \
+          || echo "PLACEHOLDER-RUNBOOK-TOLTI-KI" > /opt/headscale/config/oidc_client_secret )
+
+      # Pocket ID encryption key: a hoston generáljuk, nem a user-datában
+      # utazik (ADR-0002). Elvesztése = a titkosított adatok elvesztése —
+      # a napi mentés a config könyvtárral együtt viszi.
+      ( umask 077
+        [ -s /opt/headscale/config/pocket-id-encryption-key ] \
+          || openssl rand -base64 32 > /opt/headscale/config/pocket-id-encryption-key )
+
+      # Üres ACL policy, amíg a runbook be nem másolja a repóból az igazit —
+      # enélkül a headscale nem indul, ha a policy fájl hiányzik
+      [ -f /opt/headscale/config/acl-policy.hujson ] || cat > /opt/headscale/config/acl-policy.hujson <<'EOF'
+      {
+        // Ideiglenes bootstrap policy — a forrás-igazság a repo
+        // services/headscale/acl-policy.hujson fájlja (runbook másolja be).
+        "acls": [
+          {"action": "accept", "src": ["*"], "dst": ["*:*"]},
+        ],
+      }
+      EOF
+
+      status "DOCKER_INSTALL"
+      command -v docker >/dev/null || curl -fsSL https://get.docker.com | sh \
+        || fail "Docker telepítés nem sikerült"
+
+      status "TAILSCALE_INSTALL"
+      command -v tailscale >/dev/null || curl -fsSL https://tailscale.com/install.sh | sh \
+        || fail "Tailscale telepítés nem sikerült"
+
+      status "COMPOSE_UP"
+      cd /opt/headscale || fail "nincs /opt/headscale"
+      docker compose up -d || fail "docker compose up hibával állt le"
+
+      for _ in $(seq 1 24); do
+        docker compose exec -T headscale headscale users list >/dev/null 2>&1 && break
+        sleep 5
+      done
+      docker compose exec -T headscale headscale users list >/dev/null 2>&1 \
+        || fail "headscale nem válaszol"
+
+      status "SUCCESS: folytatás a services/headscale/RUNBOOK.md szerint (Pocket ID /setup, OIDC, tailnet-join, dnsmasq, ACL, tűzfal)"
+
+runcmd:
+  - systemctl restart ssh
+  - /usr/local/sbin/headscale-provision.sh >> /var/log/headscale-provision.log 2>&1

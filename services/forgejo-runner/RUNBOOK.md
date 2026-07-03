@@ -2,7 +2,11 @@
 
 A [cloud-init.yaml](cloud-init.yaml) és a [docker-compose.yml](docker-compose.yml) körüli kézi lépések. Előfeltétel: a Forgejo már fut és a bootstrap lefutott — [../forgejo/RUNBOOK.md](../forgejo/RUNBOOK.md) 1–7. lépés (onnan jön a `RUNNER_SECRET` és `RUNNER_UUID`).
 
-Kapcsolódó döntések: [ADR-0002](../../docs/adr/0002-no-secrets-in-cloud-init-user-data.md), [ADR-0003](../../docs/adr/0003-forgejo-dokploy-remote-serverkent.md).
+Kapcsolódó döntések: [ADR-0002](../../docs/adr/0002-nincs-secret-a-cloud-init-user-databan.md), [ADR-0003](../../docs/adr/0003-forgejo-dokploy-remote-serverkent.md).
+
+> **VPN-világ (ADR-0004–0009):** a runner a `git.pte-dev.hu`-t a privát L2-n
+> éri el (`/etc/hosts`), a gép a tailneten is node, publikus portja nincs — a
+> hálózati bekötés lépései: [docs/runbooks/vpn-atallas.md](../../docs/runbooks/vpn-atallas.md).
 
 ## 1. VPS létrehozás
 
@@ -14,16 +18,22 @@ DNS rekord nem kell — a runner kifelé csatlakozik a `git.pte-dev.hu`-ra, bej�
 
 ## 2. Remote server felvétele Dokploy-ban
 
-Dokploy UI → **Servers → Add Server**: név `PTE-Forgejo-Runner`, IP, port 22, user `root`, a meglévő Dokploy SSH kulccsal. **Setup Server**, várd meg a zöldet.
+Dokploy UI → **Servers → Add Server**: név `PTE-Forgejo-Runner-1`, IP, port 22, user `root`, a meglévő Dokploy SSH kulccsal. **Setup Server**, várd meg a zöldet.
 
 ## 3. Runner compose deploy
 
-Dokploy UI → projekt → **Create Service → Compose**, szerver: `PTE-Forgejo-Runner`, provider: **Raw**, compose típus: **Docker Compose** (NE Stack — Swarm módban a `runner-init` `service_completed_successfully` feltétele némán elveszne). Illeszd be a [docker-compose.yml](docker-compose.yml) tartalmát. **Environment** fülre a Forgejo VPS `/root/forgejo-runner-secret` fájljából:
+Dokploy UI → projekt → **Create Service → Compose**, szerver: `PTE-Forgejo-Runner-1`, provider: **Raw**, compose típus: **Docker Compose** (NE Stack — Swarm módban a `runner-init` `service_completed_successfully` feltétele némán elveszne). Illeszd be a [docker-compose.yml](docker-compose.yml) tartalmát. **Environment** fülre a Forgejo VPS `/root/forgejo-runner-secret` fájljából:
 
 ```
 RUNNER_SECRET=<secret sor>
 RUNNER_UUID=<uuid sor>
+FORGEJO_L2_IP=<a Forgejo VPS privát L2 IP-je>
 ```
+
+A `FORGEJO_L2_IP` a konténer-szintű névfeloldáshoz kell: a dind/runner
+konténerek és a job-konténerek NEM öröklik a host `/etc/hosts`-át, a
+compose `extra_hosts` + a runner-config `--add-host` ebből az env-ből kapja
+a `git.pte-dev.hu` L2 címét (git clone és registry push/pull a CI-ból).
 
 **Deploy**. A `runner-init` egyszer lefut (configot ír), a `runner` és `docker-in-docker` marad futva.
 

@@ -6,12 +6,17 @@
 # VPS-létrehozáskor a Rackforest panel kulcsmezőjébe KÉT kulcs kerül:
 # a saját SSH kulcsod ÉS a Dokploy-ban generált kulcs public fele.
 # Secret NEM kerülhet ebbe a fájlba (ADR-0002).
+# VPN-világban (ADR-0004/0005): a gépet a privát L2-re is csatolni kell
+# (a runner a git.pte-dev.hu-t /etc/hosts-szal a Forgejo privát címén éri
+# el), a tailnet-join és a tűzfal zárás a docs/runbooks/vpn-atallas.md lépése.
 
-hostname: PTE-Forgejo-Runner
+hostname: PTE-Forgejo-Runner-1
 
 ssh_pwauth: false
 
 package_update: true
+packages:
+  - ufw
 
 write_files:
   - path: /etc/ssh/sshd_config.d/99-hardening.conf

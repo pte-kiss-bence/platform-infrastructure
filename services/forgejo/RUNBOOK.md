@@ -2,7 +2,15 @@
 
 A [cloud-init.yaml](cloud-init.yaml) és a [docker-compose.yml](docker-compose.yml) körüli kézi lépések. A gépet a meglévő Dokploy (<https://dokploy.pte-dev.hu>) kezeli remote serverként — a Docker/Traefik telepítést és a deployt is a Dokploy végzi, nem a cloud-init (ADR-0003).
 
-Kapcsolódó döntések: [ADR-0002](../../docs/adr/0002-no-secrets-in-cloud-init-user-data.md) (secret-kezelés), [ADR-0003](../../docs/adr/0003-forgejo-dokploy-remote-serverkent.md) (remote server + raw compose). A runner bekötése: [../forgejo-runner/RUNBOOK.md](../forgejo-runner/RUNBOOK.md).
+Kapcsolódó döntések: [ADR-0002](../../docs/adr/0002-nincs-secret-a-cloud-init-user-databan.md) (secret-kezelés), [ADR-0003](../../docs/adr/0003-forgejo-dokploy-remote-serverkent.md) (remote server + raw compose). A runner bekötése: [../forgejo-runner/RUNBOOK.md](../forgejo-runner/RUNBOOK.md).
+
+> **VPN-világ (ADR-0004–0009):** a `git.pte-dev.hu`-nak nincs publikus DNS
+> rekordja (a nevet a tailnet-resolver adja), a cert a `*.pte-dev.hu`
+> wildcardból jön (ADR-0007), a gép a privát L2-n + a tailneten él, a Forgejo
+> login Pocket ID-n keresztül megy (ADR-0006). Friss provisionálásnál a
+> **3. lépést hagyd ki**, a **6. lépésben** Let's Encrypt helyett
+> **certificate: none**-t válassz — a hálózati bekötés lépései:
+> [docs/runbooks/vpn-atallas.md](../../docs/runbooks/vpn-atallas.md).
 
 ## 1. Dokploy SSH kulcs
 
@@ -70,6 +78,38 @@ ssh -p 2222 git@git.pte-dev.hu                             # "Hi there" jellegű
 
 UI-ban: admin → **Site Administration → Actions → Runners** — a `pte-runner-1` a runner-deploy után Idle állapotú.
 
+## Container registry (a platform docker registry-je)
+
+Külön registry-szolgáltatás nincs: a Forgejo beépített OCI registry-je a
+platform docker registry-je (`FORGEJO__packages__ENABLED`, a compose-ban
+explicit). Ugyanazon a domainen és certen él, mint a git — a runner és a
+Dokploy-gépek a privát L2-n érik el, ember a tailneten.
+
+- **Image-cím**: `git.pte-dev.hu/<owner>/<image>:<tag>` — az `<owner>` egy
+  Forgejo user vagy organizáció; a láthatóság a repo/org beállítást követi.
+- **Belépés kézzel**: `docker login git.pte-dev.hu` — jelszóként personal
+  access token (`write:package` scope), nem a jelszó.
+- **CI-ból**: a workflow-ban `docker login` a job tokenjével
+  (`${{ secrets.GITHUB_TOKEN }}` / `FORGEJO_TOKEN`) vagy dedikált
+  `write:package` scope-ú tokennel repo-secretként. A runner oldali
+  előfeltétel (a `git.pte-dev.hu` L2-feloldása a konténerekben) a runner
+  compose `extra_hosts`/`--add-host` beállítása —
+  [../forgejo-runner/RUNBOOK.md](../forgejo-runner/RUNBOOK.md) 3. lépés.
+- **Dokploy pull**: a deploy a gépek host-dockerével pullol, az a host
+  `/etc/hosts`-ból oldja fel a nevet L2-re (vpn-átállás 7. fázis) — külön
+  teendő nincs; privát image-hez a Dokploy-ban Registry credential
+  (Settings → Registry) a tokennel.
+- **Diszk + takarítás**: az image-rétegek a `forgejo-data` volume-ban
+  gyűlnek — a VPS diszkméretezésénél számolj vele. Takarítás: Site
+  Administration → Packages → cleanup rules (pl. régi tagek/untagged
+  verziók korlátozása), lefutása után a registry GC magától megy.
+- **Verifikáció**:
+  ```bash
+  docker login git.pte-dev.hu                       # token-nel
+  docker pull alpine && docker tag alpine git.pte-dev.hu/<owner>/proba:1
+  docker push git.pte-dev.hu/<owner>/proba:1        # majd UI: owner → Packages
+  ```
+
 ## Frissítés
 
 A forrás-igazság a repóbeli compose: tag átírás itt → beillesztés Dokploy-ba → **Redeploy** (ADR-0003).
@@ -90,6 +130,8 @@ A forrás-igazság a repóbeli compose: tag átírás itt → beillesztés Dokpl
 3. Compose-ban tag átírás, beillesztés, Redeploy; a Forgejo konténer logjában a migráció végigfutása után UI-ellenőrzés.
 
 **Postgres patch** (18.x): Redeploy elég. **Postgres major** (18 → 19): a 18+ image layout (szülőkönyvtár-mount, verziózott PGDATA) miatt in-place `pg_upgrade` lehetséges — a docker-library postgres README aktuális útmutatója szerint, előtte ugyanúgy `pg_dump` backup. Forgejo-t a Postgres-verzió nem érdekli (követelmény: >=14).
+
+**Debian → alpine image-váltás élő volume-on TILOS in-place**: a glibc → musl váltás collation-változás, a szöveges indexek csendben korrumpálódhatnak. Ha az élő gép még nem-alpine image-dzsel fut (a VPN-átállás előtt így deployolt gépek), az alpine-ra váltás útja: `pg_dump` → friss volume az alpine image-dzsel → restore.
 
 ## Hibaelhárítás
 
