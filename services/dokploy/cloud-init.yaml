@@ -1,0 +1,174 @@
+#cloud-config
+# Dokploy provisioning flow — Rackforest VPS, Ubuntu 24.04 LTS
+# (26.04 nem megy: a Dokploy install.sh olyan Docker verziót pinnel,
+#  ami a resolute repóban nincs — részletek: RUNBOOK.md / Hibaelhárítás)
+# Nincs placeholder: az SSH kulcsot a Rackforest panel injektálja a root userhez
+# VPS-létrehozáskor — a kulcs mező kitöltése ott KÖTELEZŐ, különben kizárod magad.
+# Secret NEM kerülhet ebbe a fájlba (ADR-0002).
+
+hostname: PTE-Dokploy
+
+ssh_pwauth: false
+
+package_update: true
+packages:
+  - curl
+  - dnsutils
+  - openssl
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/99-hardening.conf
+    permissions: "0644"
+    content: |
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin prohibit-password
+
+  - path: /usr/local/sbin/dokploy-provision.sh
+    permissions: "0700"
+    owner: root:root
+    content: |
+      #!/bin/bash
+      # Dokploy provisioning flow.
+      # Futtatás: cloud-init első bootkor ("all" fázis), vagy kézzel
+      # "domain" fázissal, ha a DNS csak a boot után állt be (runbook 4. lépés).
+      set -u
+
+      DOMAIN="dokploy.pte-dev.hu"
+      EMAIL="dokploy@pte-dev.hu"
+      CRED_FILE="/root/dokploy-admin-credentials"
+      STATUS_FILE="/root/dokploy-provision-status"
+      COOKIE_JAR="$(mktemp)"
+      DNS_TIMEOUT_SEC=1800
+      PHASE="${1:-all}"
+
+      log()    { echo "[$(date -Is)] $*"; }
+      status() { echo "$1" > "$STATUS_FILE"; log "STATUS: $1"; }
+      fail()   { status "FAILED: $*"; exit 1; }
+
+      server_ip() {
+        curl -4fs --connect-timeout 5 https://ifconfig.io 2>/dev/null \
+          || curl -4fs --connect-timeout 5 https://icanhazip.com 2>/dev/null
+      }
+
+      wait_for_panel() {
+        for _ in $(seq 1 60); do
+          curl -fs -o /dev/null http://localhost:3000/ && return 0
+          sleep 5
+        done
+        return 1
+      }
+
+      install_dokploy() {
+        status "INSTALL"
+        # Pre-flight: van-e Docker apt repo ehhez az Ubuntu kiadáshoz (K7 / runbook)
+        . /etc/os-release
+        curl -fs "https://download.docker.com/linux/ubuntu/dists/${VERSION_CODENAME}/Release" >/dev/null \
+          || fail "Docker apt repo nem támogatja ezt a kiadást: ${VERSION_CODENAME}"
+
+        export ADVERTISE_ADDR="$SERVER_IP"
+        curl -sSL https://dokploy.com/install.sh | sh || fail "Dokploy install script hibával állt le"
+        wait_for_panel || fail "Dokploy panel nem válaszol a :3000-en"
+      }
+
+      bootstrap_admin() {
+        status "ADMIN_BOOTSTRAP"
+        # Nem dokumentált better-auth endpoint — verzióváltásnál törhet (ADR-0001).
+        local password code
+        password=$(openssl rand -base64 32 | tr -d '=+/' | cut -c1-24)
+        code=$(curl -s -o /tmp/dokploy-signup.json -w '%{http_code}' \
+          -X POST http://localhost:3000/api/auth/sign-up/email \
+          -H 'Content-Type: application/json' \
+          -d "{\"email\":\"${EMAIL}\",\"password\":\"${password}\",\"name\":\"Dokploy Admin\"}")
+        if [ "$code" != "200" ]; then
+          fail "admin sign-up HTTP ${code} — endpoint változhatott (ADR-0001); manuális register: http://${SERVER_IP}:3000/register"
+        fi
+        ( umask 077; printf 'url: https://%s\nemail: %s\npassword: %s\n' \
+            "$DOMAIN" "$EMAIL" "$password" > "$CRED_FILE" )
+        log "Admin létrehozva, credentials: ${CRED_FILE}"
+      }
+
+      sign_in() {
+        local password code
+        password=$(awk '/^password:/{print $2}' "$CRED_FILE")
+        [ -n "$password" ] || fail "nincs jelszó a ${CRED_FILE}-ban"
+        code=$(curl -s -o /dev/null -w '%{http_code}' -c "$COOKIE_JAR" \
+          -X POST http://localhost:3000/api/auth/sign-in/email \
+          -H 'Content-Type: application/json' \
+          -d "{\"email\":\"${EMAIL}\",\"password\":\"${password}\"}")
+        [ "$code" = "200" ] || fail "sign-in HTTP ${code}"
+      }
+
+      wait_for_dns() {
+        status "DNS_WAIT"
+        local waited=0 resolved
+        while [ "$waited" -lt "$DNS_TIMEOUT_SEC" ]; do
+          resolved=$(dig +short A "$DOMAIN" @1.1.1.1 | tail -n1)
+          [ "$resolved" = "$SERVER_IP" ] && return 0
+          sleep 15; waited=$((waited+15))
+        done
+        return 1
+      }
+
+      assign_domain() {
+        status "DOMAIN_ASSIGN"
+        sign_in
+        local code
+        code=$(curl -s -o /tmp/dokploy-domain.json -w '%{http_code}' -b "$COOKIE_JAR" \
+          -X POST http://localhost:3000/api/settings.assignDomainServer \
+          -H 'Content-Type: application/json' \
+          -d "{\"host\":\"${DOMAIN}\",\"certificateType\":\"letsencrypt\",\"letsEncryptEmail\":\"${EMAIL}\",\"https\":true}")
+        [ "$code" = "200" ] || fail "assignDomainServer HTTP ${code} ($(cat /tmp/dokploy-domain.json))"
+
+        status "CERT_WAIT"
+        for _ in $(seq 1 40); do
+          curl -fs -o /dev/null "https://${DOMAIN}/" && return 0
+          sleep 15
+        done
+        fail "Let's Encrypt cert nem jött létre 10 percen belül — :3000 nyitva maradt, nézd a Traefik logot"
+      }
+
+      close_port_3000() {
+        # Csak sikeres cert után fut (K5): különben kizárnánk magunkat a panelből.
+        # Az install.sh mode=host-tal publikálja a 3000-et; a publish-rm csak a
+        # PONTOSAN egyező spec-et távolítja el (mode-ostul), eltérésnél némán,
+        # exit 0-val nem csinál semmit — ezért a teljes spec + az ss-verifikáció.
+        status "PORT_CLOSE"
+        docker service update --publish-rm published=3000,target=3000,protocol=tcp,mode=host dokploy \
+          || fail "3000-es port zárás nem sikerült"
+        sleep 15
+        if ss -tln | grep -q ':3000 '; then
+          fail "a :3000 a publish-rm után is nyitva van"
+        fi
+      }
+
+      SERVER_IP=$(server_ip) || true
+      [ -n "${SERVER_IP:-}" ] || fail "publikus IP nem állapítható meg"
+      log "Szerver IP: ${SERVER_IP}"
+
+      case "$PHASE" in
+        all)
+          install_dokploy
+          bootstrap_admin
+          if wait_for_dns; then
+            assign_domain
+            close_port_3000
+            status "SUCCESS"
+          else
+            status "PARTIAL: DNS timeout — vidd fel az A rekordot (${DOMAIN} -> ${SERVER_IP}), majd: dokploy-provision.sh domain"
+          fi
+          ;;
+        domain)
+          wait_for_panel || fail "panel nem elérhető a :3000-en"
+          wait_for_dns || fail "a DNS még mindig nem a szerver IP-jére mutat"
+          assign_domain
+          close_port_3000
+          status "SUCCESS"
+          ;;
+        *)
+          echo "használat: $0 [all|domain]"; exit 2 ;;
+      esac
+
+runcmd:
+  - systemctl restart ssh
+  - /usr/local/sbin/dokploy-provision.sh all >> /var/log/dokploy-provision.log 2>&1
