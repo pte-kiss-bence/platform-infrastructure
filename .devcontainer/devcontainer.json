@@ -17,14 +17,15 @@
     "ghcr.io/anthropics/devcontainer-features/claude-code:1": {}
   },
   "mounts": [
-    "source=${localEnv:HOME}/.claude-devcontainer/${localWorkspaceFolderBasename},target=/home/vscode/.claude-devcontainer,type=bind"
+    "source=${localEnv:HOME}/.claude-devcontainer/${localWorkspaceFolderBasename},target=/home/vscode/.claude-devcontainer,type=bind",
+    "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh-localhost,type=bind,readonly"
   ],
   "remoteEnv": {
     "CLAUDE_CONFIG_DIR": "/home/vscode/.claude-devcontainer"
   },
   "initializeCommand": "sh .devcontainer/init.sh '${localWorkspaceFolderBasename}'",
   "postCreateCommand": "sh .devcontainer/post-create.sh",
-  "postStartCommand": "sh .devcontainer/fix-permissions.sh",
+  "postStartCommand": "sh .devcontainer/fix-permissions.sh && sh .devcontainer/ssh-keys.sh",
   "customizations": {
     "vscode": {
       "extensions": [
