@@ -27,7 +27,7 @@ Minden küldő gép saját htpasswd-usert és saját repót kap (`--private-repo
 ```bash
 # jelszó generálás + user felvétel (példa: a beléptető réteg usere)
 PW=$(openssl rand -base64 24)
-htpasswd -B -b /opt/backup/data/.htpasswd beleptetoreteg "$PW"
+htpasswd -B -b /opt/backup/data/.htpasswd headscale "$PW"
 echo "$PW"   # ezt írd a küldő gép /root/restic-*-repo URL-jébe, majd felejtsd el
 ```
 
@@ -65,8 +65,8 @@ Ezt eleinte kézzel, negyedévente elég; ha a diszk telik, systemd timerbe.
 ## Verifikáció (visszaállítási próba — az első éles mentés után kötelező)
 
 ```bash
-restic -r /opt/backup/data/beleptetoreteg --password-file <jelszó> snapshots
-restic -r /opt/backup/data/beleptetoreteg --password-file <jelszó> \
+restic -r /opt/backup/data/headscale --password-file <jelszó> snapshots
+restic -r /opt/backup/data/headscale --password-file <jelszó> \
   restore latest --target /tmp/restore-proba && ls -R /tmp/restore-proba | head
 ```
 

@@ -138,6 +138,12 @@ write_files:
         mode: file
         path: /etc/headscale/acl-policy.hujson
 
+      # Node-kulcs lejárat (0.29-ig oidc.expiry volt) — emberi node-okra
+      # szánt 90 nap; a szerver-node-ok lejáratát a RUNBOOK 5. lépése
+      # kapcsolja ki node-onként.
+      node:
+        expiry: 90d
+
       dns:
         magic_dns: true
         base_domain: ts.pte-dev.hu
@@ -160,7 +166,6 @@ write_files:
       #  issuer: https://id.pte-dev.hu
       #  client_id: headscale
       #  client_secret_path: /etc/headscale/oidc_client_secret
-      #  expiry: 90d
 
       unix_socket: /var/run/headscale/headscale.sock
       unix_socket_permission: "0770"
@@ -201,7 +206,7 @@ write_files:
 
   # ---- napi mentés a backup gépre (ADR-0008) --------------------------------
   # Élesítés runbook-lépés: restic repo init + jelszó fájl + timer enable.
-  - path: /usr/local/sbin/beleptetoreteg-backup.sh
+  - path: /usr/local/sbin/headscale-backup.sh
     permissions: "0700"
     owner: root:root
     content: |
@@ -211,10 +216,10 @@ write_files:
       # Cél: restic rest-server a backup gépen, append-only, a tailneten át.
       set -euo pipefail
 
-      STAGE=/var/backups/beleptetoreteg-stage
+      STAGE=/var/backups/headscale-stage
       DATA=/opt/headscale/data
-      REPO_FILE=/root/restic-beleptetoreteg-repo        # pl. rest:http://user:pass@backup.pte-dev.hu:8000/beleptetoreteg
-      PASS_FILE=/root/restic-beleptetoreteg-password
+      REPO_FILE=/root/restic-headscale-repo        # pl. rest:http://user:pass@backup.pte-dev.hu:8000/headscale
+      PASS_FILE=/root/restic-headscale-password
 
       [ -s "$REPO_FILE" ] || { echo "nincs repo URL: $REPO_FILE"; exit 1; }
       [ -s "$PASS_FILE" ] || { echo "nincs restic jelszó: $PASS_FILE"; exit 1; }
@@ -232,25 +237,25 @@ write_files:
       cp -a /opt/headscale/config "$STAGE/config"
 
       restic -r "$(cat "$REPO_FILE")" --password-file "$PASS_FILE" \
-        backup "$STAGE" --tag beleptetoreteg
+        backup "$STAGE" --tag headscale
       restic -r "$(cat "$REPO_FILE")" --password-file "$PASS_FILE" \
-        snapshots --latest 1 --tag beleptetoreteg
+        snapshots --latest 1 --tag headscale
 
-  - path: /etc/systemd/system/beleptetoreteg-backup.service
+  - path: /etc/systemd/system/headscale-backup.service
     permissions: "0644"
     content: |
       [Unit]
-      Description=Belepteto reteg napi mentese a backup gepre (ADR-0008)
+      Description=Beléptető réteg napi mentése a backup gépre (ADR-0008)
 
       [Service]
       Type=oneshot
-      ExecStart=/usr/local/sbin/beleptetoreteg-backup.sh
+      ExecStart=/usr/local/sbin/headscale-backup.sh
 
-  - path: /etc/systemd/system/beleptetoreteg-backup.timer
+  - path: /etc/systemd/system/headscale-backup.timer
     permissions: "0644"
     content: |
       [Unit]
-      Description=Belepteto reteg napi mentes idozito
+      Description=Beléptető réteg napi mentés időzítő
 
       [Timer]
       OnCalendar=*-*-* 03:15:00
@@ -299,6 +304,10 @@ write_files:
       ( umask 077
         [ -s /opt/headscale/config/pocket-id-encryption-key ] \
           || openssl rand -base64 32 > /opt/headscale/config/pocket-id-encryption-key )
+      # A pocket-id konténer nem rootként fut (uid 1000) — root:0600 fájlt
+      # a ro-mounton se tud olvasni (crash-loop lenne)
+      chown 1000:1000 /opt/headscale/config/pocket-id-encryption-key
+      chmod 400 /opt/headscale/config/pocket-id-encryption-key
 
       # Üres ACL policy, amíg a runbook be nem másolja a repóból az igazit —
       # enélkül a headscale nem indul, ha a policy fájl hiányzik

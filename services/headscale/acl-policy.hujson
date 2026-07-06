@@ -14,28 +14,33 @@
 // guest-hozzáférés projekt-szintű).
 {
   "groups": {
-    // Admin: minden (Dokploy panel, SSH, minden gép)
+    // Admin: minden (Dokploy panel, SSH, minden gép).
+    // Konvenció: a usereket a headscale-oldali usernevükön matcheljük,
+    // @-végződéssel (headscale users list, Username oszlop) — nem a Pocket
+    // ID-s emailen (az csak verified állapotban jut el a headscale-ig).
     "group:admin": [
-      "kiss.bence1@pte.hu",
+      "kiss-bence-pte@",
     ],
     // Dev: Forgejo (web + git SSH) és a projekt-VPS-ek
     "group:dev": [
-      // "csapattag@pte.hu",
+      "csaszar-zsolt-pte@",
+      // új tag: "vezeteknev-keresztnev-pte@",
     ],
     // Guest: más PTE-s csapatok, projektenkénti meghívással
     "group:guest": [
-      // "vendeg@pte.hu",
+      // "vezeteknev-keresztnev-pte@"
     ],
   },
 
   "hosts": {
-    "dokploy":        "__DOKPLOY_TAILNET_IP__/32",
-    "forgejo":        "__FORGEJO_TAILNET_IP__/32",
-    "runner":         "__RUNNER_TAILNET_IP__/32",
-    "backup":         "__BACKUP_TAILNET_IP__/32",
-    "beleptetoreteg": "__HEADSCALE_TAILNET_IP__/32",
+    "dokploy":        "100.64.0.2/32",
+    "forgejo":        "100.64.0.3/32",
+    "runner":         "100.64.0.4/32",
+    // Backup gép ebben az iterációban kimaradt — felhúzáskor visszakapcsolandó:
+    // "backup":         "__BACKUP_TAILNET_IP__/32",
+    "headscale":      "100.64.0.6/32",
     // A csapat saját belső tool-gépe (infra, nem app-projekt — ADR-0009):
-    "shared":         "__SHARED_TAILNET_IP__/32",
+    "shared":         "100.64.0.5/32",
     // Projekt-VPS-ek — app-projektenként egy bejegyzés:
     // "projekt-<nev>": "<tailnet IP>/32",
   },
@@ -59,9 +64,10 @@
     // ]},
 
     // Mindenki eléri a tailnet-resolvert (DNS) — enélkül nincs névfeloldás
-    {"action": "accept", "src": ["*"], "dst": ["beleptetoreteg:53"]},
+    {"action": "accept", "src": ["*"], "dst": ["headscale:53"]},
 
-    // A beléptető réteg a napi dumpot a backup gépre tolja (ADR-0008)
-    {"action": "accept", "src": ["beleptetoreteg"], "dst": ["backup:8000"]},
+    // A beléptető réteg a napi dumpot a backup gépre tolja (ADR-0008) —
+    // a backup gép ebben az iterációban kimaradt, felhúzáskor visszakapcsolandó:
+    // {"action": "accept", "src": ["headscale"], "dst": ["backup:8000"]},
   ],
 }

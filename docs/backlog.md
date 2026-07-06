@@ -24,7 +24,7 @@ nincs bekötve — a topológia-ábrán az él szaggatott, amíg ez él nem lesz
 
 - Forrás: [ADR-0008](adr/0008-dedikalt-backup-vps-restic-append-only.md),
   [architektura.md](architektura.md) 4. flow
-- Minta: `services/headscale/cloud-init.yaml` `beleptetoreteg-backup.sh`.
+- Minta: `services/headscale/cloud-init.yaml` `headscale-backup.sh`.
 
 ## 3. Off-site backup másolat
 
@@ -49,12 +49,9 @@ provision script legacy `domain` fázisának sorsa.
   [runbooks/vpn-atallas.md](runbooks/vpn-atallas.md) (záró állapot-ellenőrzés)
 - Addig: a callout-minta a valóságot dokumentálja — nem nyúlunk hozzá.
 
-## 5. Szerver node-key lejárat: eldöntendő eljárás
+## ~~5. Szerver node-key lejárat~~ — LEZÁRVA 2026-07-06
 
-A headscale RUNBOOK 5. lépése feltételesen fogalmaz („ha a verzió
-támogatja”) a szerver-node-ok kulcslejáratának kikapcsolásáról. A telepített
-headscale-verzión (0.29) ki kell próbálni az `expire --expiry 0` utat, és a
-runbookba a működő eljárást beírni — különben 90 naponta kézzel kell minden
-szerver-node-ot újra beléptetni.
-
-- Forrás: [services/headscale/RUNBOOK.md](../services/headscale/RUNBOOK.md) 5. lépés
+Megoldva: headscale 0.29 `nodes expire --identifier <ID> --disable` — az 5
+szerver-node lejárata kikapcsolva, az eljárás a
+[headscale RUNBOOK](../services/headscale/RUNBOOK.md) 5. lépésébe beírva.
+Emberi node-ok 90 napos lejárata szándékosan maradt (re-auth védelem).

@@ -42,7 +42,10 @@ services:
       - |
         set -e
         if [ ! -f /data/runner-config.yml ]; then
-          printf 'log:\n  level: info\nrunner:\n  capacity: 2\n  timeout: 1h\ncontainer:\n  options: "--add-host=git.pte-dev.hu:%s"\nserver:\n  connections:\n    forgejo:\n      url: %s\n      uuid: %s\n      token: %s\n' \
+          # A labels szekció kötelező: a daemon induláskor a config labeljeivel
+          # felülírja a regisztrációkor kapottakat — üres config = label nélküli
+          # runner, amire soha egyetlen job sem matchel (2026-07-06, élesben).
+          printf 'log:\n  level: info\nrunner:\n  capacity: 2\n  timeout: 1h\n  labels:\n    - "ubuntu-latest:docker://ghcr.io/catthehacker/ubuntu:act-24.04"\n    - "ubuntu-22.04:docker://ghcr.io/catthehacker/ubuntu:act-22.04"\ncontainer:\n  options: "--add-host=git.pte-dev.hu:%s"\nserver:\n  connections:\n    forgejo:\n      url: %s\n      uuid: %s\n      token: %s\n' \
             "$$FORGEJO_L2_IP" "$$FORGEJO_INSTANCE_URL" "$$RUNNER_UUID" "$$RUNNER_SECRET" > /data/runner-config.yml
           echo "runner-config.yml létrehozva"
         fi

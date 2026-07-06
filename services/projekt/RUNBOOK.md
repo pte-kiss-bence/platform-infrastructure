@@ -99,8 +99,41 @@ entryPoints:
 Infra-gépen (Dokploy, Forgejo) a `domains` blokk ehelyett:
 `main: pte-dev.hu`, `sans: ["*.pte-dev.hu"]`.
 
-Traefik restart, majd: `docker logs <traefik> 2>&1 | grep -i acme` — kiállt-e
-a cert.
+3. **A cert-kérést egy dedikált file-provider router indítja** — az
+   entrypoint-szintű `domains` blokk önmagában NEM kér certet: a
+   Dokploy-generálta routerek explicit (üres) `tls=true` labelt hordoznak,
+   ezért az entrypoint-defaultot nem öröklik, és sosem triggerelik a
+   wildcard-igénylést (2026-07-06-i átállásnál élesben igazolva).
+   `/etc/dokploy/traefik/dynamic/wildcard-cert.yml`:
+
+```yaml
+http:
+  routers:
+    wildcard-cert:
+      rule: "Host(`wildcard-cert-dummy.pte-dev.hu`)"
+      entryPoints:
+        - websecure
+      service: noop@internal
+      tls:
+        certResolver: letsencrypt
+        domains:
+          - main: "<projekt>.pte-dev.hu"
+            sans:
+              - "*.<projekt>.pte-dev.hu"
+              - "*.staging.<projekt>.pte-dev.hu"
+              - "*.preview.<projekt>.pte-dev.hu"
+```
+
+   (Infra-gépen a `domains` blokk itt is a `pte-dev.hu` + `*.pte-dev.hu`
+   páros.) A file provider watch-ol, restart nélkül felszedi.
+
+Ha a gépen korábban per-domain cert élt (HTTP challenge-es acme.json),
+előbb töröld: `docker stop <traefik> && rm
+/etc/dokploy/traefik/dynamic/acme.json && docker start <traefik>` —
+különben az exact-match régi cert nyer az SNI-n a wildcard felett.
+
+Ellenőrzés: `docker logs <traefik> 2>&1 | grep -i acme` — kiállt-e a cert
+(`delayBeforeCheck: 90` miatt ~2-3 perc).
 
 ### 6. Tűzfal zárás
 

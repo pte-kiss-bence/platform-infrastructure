@@ -43,6 +43,15 @@ resolválnak; ellenőrzés: `https://vpn.pte-dev.hu` (headscale válasz) és
    docker compose -f /opt/headscale/docker-compose.yml exec pocket-id \
      /app/pocket-id one-time-access-token <email>
    ```
+3. **SMTP (Mailjet)** — admin felület → Application Configuration → Email:
+   host `in-v3.mailjet.com`, port `587`, STARTTLS; user/password a Mailjet
+   API/Secret kulcspár; From: `id@pte-dev.hu`. Kapcsolók: „Emails verified
+   by default" + „Email Login Notification" + „Email Login Code from
+   Admin" BE (a verified email a headscale user-rekordjába is átkerül —
+   az ACL ettől függetlenül a headscale-username `@`-formájával matchel);
+   **„Email Login Code Requested by User" mindig KI** —
+   emailes passkey-bypass, a platform-identitás erősségét ütné ki
+   (ADR-0006). Verifikáció: Send test email.
 
 ## 4. Headscale OIDC élesítés
 
@@ -71,8 +80,10 @@ nem kerül (ADR-0002).
 ```bash
 cd /opt/headscale
 docker compose exec headscale headscale users create infra
-# gépenként egy egyszer használatos, rövid életű kulcs:
-docker compose exec headscale headscale preauthkeys create --user infra --expiration 1h
+docker compose exec headscale headscale users list   # az infra numerikus ID-ja kell
+# gépenként egy egyszer használatos, rövid életű kulcs (a --user a numerikus
+# ID-t várja, nem a nevet — headscale 0.29):
+docker compose exec headscale headscale preauthkeys create --user <INFRA_ID> --expiration 1h
 ```
 
 A cél-gépen (a vpn-átállás runbook szerint):
@@ -82,15 +93,17 @@ curl -fsSL https://tailscale.com/install.sh | sh
 tailscale up --login-server https://vpn.pte-dev.hu --authkey <PREAUTH_KULCS>
 ```
 
-Szerver-node-ok kulcslejáratának kikapcsolása (ne járjon le a gépek belépése):
+Szerver-node-ok kulcslejáratának kikapcsolása (ne járjon le a gépek
+belépése; emberi node-oknál NEM — ott a 90 napos re-auth védelem marad):
 
 ```bash
-docker compose exec headscale headscale nodes list
-docker compose exec headscale headscale nodes expire --identifier <ID> --expiry 0   # ha a verzió támogatja; különben: preauthkeys create --reusable=false és node keyexpiry kezelés a headscale doksi szerint
+docker compose exec headscale headscale nodes list   # szerver-node ID-k
+docker compose exec headscale headscale nodes expire --identifier <ID> --disable --force
 ```
 
-A működő eljárás a telepített verzión kipróbálandó és ide beírandó —
-nyitott tétel: [docs/backlog.md](../../docs/backlog.md) 5. pont.
+(Headscale 0.29-en élesben igazolva, 2026-07-06. Minden ÚJ szerver-node
+joinja után ez a lépés is jár — különben 90 nap múlva csendben leesik a
+tailnetről.)
 
 ## 6. Tailnet-resolver (dnsmasq) és split DNS élesítés
 
@@ -98,7 +111,7 @@ Előfeltétel: az összes platform-gép (és ez a gép is) fent van a tailneten.
 
 1. Ez a gép is tailnet-node:
    ```bash
-   docker compose exec headscale headscale preauthkeys create --user infra --expiration 1h
+   docker compose exec headscale headscale preauthkeys create --user <INFRA_ID> --expiration 1h
    tailscale up --login-server https://vpn.pte-dev.hu --authkey <KULCS>
    tailscale ip -4    # ez lesz a __HEADSCALE_TAILNET_IP__
    ```
@@ -157,16 +170,16 @@ Előfeltétel: a backup gép fut, rajta repo-user a beléptető rétegnek
 
 ```bash
 ( umask 077
-  openssl rand -base64 32 > /root/restic-beleptetoreteg-password
-  echo 'rest:http://beleptetoreteg:<HTPASSWD_JELSZO>@backup.pte-dev.hu:8000/beleptetoreteg' \
-    > /root/restic-beleptetoreteg-repo )
-restic -r "$(cat /root/restic-beleptetoreteg-repo)" \
-  --password-file /root/restic-beleptetoreteg-password init
-systemctl enable --now beleptetoreteg-backup.timer
+  openssl rand -base64 32 > /root/restic-headscale-password
+  echo 'rest:http://headscale:<HTPASSWD_JELSZO>@backup.pte-dev.hu:8000/headscale' \
+    > /root/restic-headscale-repo )
+restic -r "$(cat /root/restic-headscale-repo)" \
+  --password-file /root/restic-headscale-password init
+systemctl enable --now headscale-backup.timer
 # próba + visszaolvasás:
-systemctl start beleptetoreteg-backup.service
-restic -r "$(cat /root/restic-beleptetoreteg-repo)" \
-  --password-file /root/restic-beleptetoreteg-password snapshots
+systemctl start headscale-backup.service
+restic -r "$(cat /root/restic-headscale-repo)" \
+  --password-file /root/restic-headscale-password snapshots
 ```
 
 **A restic jelszót tedd el a gépen kívül is** (jelszókezelő) — nélküle a
@@ -183,7 +196,7 @@ A pinek gazdája a repo `cloud-init.yaml` compose-blokkja
    breaking config-változásokat; a Pocket ID major-váltásnál migrációs guide
    van (v1→v2: kötelező `ENCRYPTION_KEY`, lásd
    pocket-id.org/docs/setup/major-releases). Előbb changelog, aztán pin.
-2. **Mentés előbb**: `systemctl start beleptetoreteg-backup.service` — a
+2. **Mentés előbb**: `systemctl start headscale-backup.service` — a
    DB-migráció visszafelé nem garantált, a dump a rollback-út.
 3. Pin átírása a repóban → átvezetés a gépen
    (`/opt/headscale/docker-compose.yml`), majd:
@@ -215,7 +228,7 @@ status` egy kliensen.
    Rackhost A rekordok átírása.
 2. A legutóbbi dump visszatöltése a backup gépről:
    ```bash
-   restic -r rest:http://beleptetoreteg:<PW>@<BACKUP_L2_VAGY_PUBLIKUS_UTVONAL>/beleptetoreteg \
+   restic -r rest:http://headscale:<PW>@<BACKUP_L2_VAGY_PUBLIKUS_UTVONAL>/headscale \
      --password-file <jelszó> restore latest --target /tmp/restore
    ```
    Vigyázat: a backup gép tailneten érhető el, ami ilyenkor épp halott — a

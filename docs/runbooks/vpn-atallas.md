@@ -97,24 +97,23 @@ mechanikával a saját zóna-certjüket, a SAN-lista a
 [services/projekt/RUNBOOK.md](../../services/projekt/RUNBOOK.md) 5. lépése
 szerint. Gépenként:
 
-1. A cert-config receptje (resolver + entrypoint default cert) a
+1. A cert-config receptje (resolver + wildcard-kérő file-provider router +
+   acme.json-takarítás) a
    [services/projekt/RUNBOOK.md](../../services/projekt/RUNBOOK.md) 5.
    lépésében lakik — az a gazda-dokumentum. Infra-gépen a `domains` blokk:
-   `main: pte-dev.hu`, `sans: ["*.pte-dev.hu"]` (ettől lesz minden `tls: {}`
-   router automatikusan wildcardos — ADR-0007).
-2. Egy eltérés a recepttől: a Dokploy gépen a Traefik Swarm service-ként fut,
-   ott a `DESEC_TOKEN` így megy be:
-   ```bash
-   docker service update --env-add DESEC_TOKEN=<TOKEN> dokploy-traefik
-   ```
-   A többi gépen (Forgejo, Shared) a Traefik sima konténer — a token
-   bejuttatása a projekt RUNBOOK 5.1 szerint; utána ellenőrizd:
-   `docker inspect <traefik cid> | grep DESEC_TOKEN`. **Figyelem:** az
+   `main: pte-dev.hu`, `sans: ["*.pte-dev.hu"]`.
+2. A Traefik MINDEN gépen sima konténer (`dokploy-traefik` — a Dokploy gépen
+   is: a Dokploy v0.29 már nem Swarm service-ként futtatja; 2026-07-06-án
+   élesben ellenőrizve). A `DESEC_TOKEN` bejuttatása ezért mindenhol azonos:
+   konténer újra-létrehozás env-vel (recreate előtt `docker inspect` a
+   bindek/portok/hálózat visszaépítéséhez — a dokploy-network tagság fix
+   IP-vel jön, `docker network connect --ip <eredeti IP>`). Utána ellenőrizd:
+   `docker inspect dokploy-traefik | grep DESEC_TOKEN`. **Figyelem:** az
    env-nek a konténer újra-létrehozását is túl kell élnie (ha a Dokploy
    újrahúzza a Traefiket és az env elveszik, a cert-megújítás ~60 nap múlva
    csendben elhal) — Traefik-újrahúzás után az inspect-ellenőrzést ismételd meg.
-3. Traefik restart, majd a logból ellenőrizd a DNS-01 challenge sikerét
-   (`docker logs <traefik> 2>&1 | grep -i acme`).
+3. A logból ellenőrizd a DNS-01 challenge sikerét
+   (`docker logs dokploy-traefik 2>&1 | grep -i acme`).
 4. Dokploy UI-ban a meglévő domainek (dokploy.pte-dev.hu a Web Server-en,
    git.pte-dev.hu a Forgejo service-en) certificate beállítása **none**-ra —
    per-domain certet többé nem kérünk (CT-log leak, ADR-0007).
@@ -231,8 +230,9 @@ tailnet-kliensről továbbra is resolvál (split DNS).
 
 ## 12. fázis — Csapat-onboarding
 
-Emberenként a [services/headscale/RUNBOOK.md](../../services/headscale/RUNBOOK.md)
-Onboarding szakasza szerint. Átállás-specifikus jó hír: a git remote-ok a
+Emberenként az [onboarding-doksi](../onboarding.md) szerint (admin-lépések
+gazdája: [services/headscale/RUNBOOK.md](../../services/headscale/RUNBOOK.md),
+Onboarding szakasz). Átállás-specifikus jó hír: a git remote-ok a
 userek gépein változatlanok (`git.pte-dev.hu` — a split DNS miatt ugyanaz a
 név megy tovább).
 

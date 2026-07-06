@@ -36,8 +36,30 @@ láncba is kell szabály a publikus interfészre:
 ```bash
 PUB_IF=$(ip route get 1.1.1.1 | awk '{print $5; exit}')
 iptables -I DOCKER-USER -i "$PUB_IF" -m conntrack --ctstate NEW -j DROP
-DEBIAN_FRONTEND=noninteractive apt-get install -y iptables-persistent
-netfilter-persistent save
+```
+
+**A perzisztáláshoz NE iptables-persistent-et használj** — Ubuntu 24.04-en
+az `iptables-persistent` csomag ELTÁVOLÍTJA az ufw-t (csomag-konfliktus;
+2026-07-06-án élesben megtörtént: a host-tűzfal némán leállt). Helyette
+systemd oneshot unit, ami boot után (a Docker indulását követően) szúrja
+be a szabályt:
+
+```bash
+cat > /etc/systemd/system/docker-user-drop.service <<EOF
+[Unit]
+Description=DOCKER-USER: uj bejovo kapcsolat tiltasa a publikus interfeszen
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'iptables -C DOCKER-USER -i $PUB_IF -m conntrack --ctstate NEW -j DROP 2>/dev/null || iptables -I DOCKER-USER -i $PUB_IF -m conntrack --ctstate NEW -j DROP'
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload && systemctl enable --now docker-user-drop.service
+iptables -S DOCKER-USER   # a DROP szabály az elején
 ```
 
 ## Verifikáció
