@@ -25,7 +25,7 @@ az átállás a [runbooks/vpn-atallas.md](runbooks/vpn-atallas.md)-ben.
 | PTE-Forgejo-Runner-1                                       | Forgejo Runner (DinD)                                                       | ✓         | ✓       | —                 |
 | PTE-Shared                                                 | a csapat saját belső tooljai (infra; technikailag projekt-sablon) + Traefik | ✓         | ✓       | —                 |
 | PTE-\<Projekt\> (app-projektenként egy, már az indulástól) | a projekt app-jai mindhárom env-vel (prod/staging/preview) + Traefik        | ✓         | ✓       | —                 |
-| PTE-Backup                                                 | restic rest-server (append-only)                                            | ✓         | ✓       | —                 |
+| PTE-Backup                                                 | restic rest-server (append-only) — **még nincs felhúzva** (backlog 2.)     | ✓         | ✓       | —                 |
 
 ### Docker image-ek
 
@@ -96,8 +96,8 @@ flowchart TB
 
     DOK -- "SSH (privát L2)" --> FOR & RUN & APP
     RUN -- "git.pte-dev.hu<br/>(privát L2, /etc/hosts)" --> FOR
-    DOK & FOR & APP -. "mentések (privát L2 —<br/>bekötés később, backlog)" .-> BCK
-    HS -- "napi dump (tailnet)" --> BCK
+    DOK & FOR & APP -. "mentések (privát L2 —<br/>bekötés hátravan, backlog)" .-> BCK
+    HS -. "napi dump (tailnet —<br/>bekötés hátravan, backlog)" .-> BCK
 
     DOK & FOR & APP -- "DNS-01 challenge" --> DESEC
     DESEC -.-> LE
@@ -253,14 +253,16 @@ Rackhost CNAME, Traefik zóna-cert. Részletek:
 
 ```mermaid
 flowchart LR
-    HS["PTE-Headscale<br/>headscale DB + Pocket ID<br/>(napi systemd timer)"]
+    HS["PTE-Headscale<br/>headscale DB + Pocket ID<br/>(napi systemd timer, terv)"]
     PLAT["Platform-gépek<br/>(Forgejo adat, app DB-k —<br/>bekötés későbbi feladat)"]
     BCK["PTE-Backup<br/>restic rest-server<br/>append-only + private-repos"]
 
-    HS -- "restic (tailnet)" --> BCK
-    PLAT -- "restic (privát L2)" --> BCK
+    HS -. "restic (tailnet)" .-> BCK
+    PLAT -. "restic (privát L2)" .-> BCK
 ```
 
+- **Jelen állapot**: a teljes flow terv — a PTE-Backup gép még nincs
+  felhúzva, egyetlen mentés sem fut ([backlog 2. tétel](backlog.md)).
 - **Append-only**: a küldő gép csak írni tud — kompromittált gép nem
   semmisítheti meg a saját mentéseit; retention a backup gépen fut (ADR-0008).
 - A restic kliens-oldalon titkosít; a repo-jelszavak a gépeken KÍVÜL is

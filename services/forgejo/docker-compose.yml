@@ -35,6 +35,10 @@ services:
       FORGEJO__server__SSH_DOMAIN: git.pte-dev.hu
       FORGEJO__server__SSH_PORT: "2222"
       FORGEJO__service__DISABLE_REGISTRATION: "true"
+      # Csak angol UI — böngésző-nyelvtől függetlenül (a magyar fordítás
+      # hiányos, és a platform munkanyelve angol).
+      FORGEJO__i18n__LANGS: en-US
+      FORGEJO__i18n__NAMES: English
       FORGEJO__actions__ENABLED: "true"
       # Beépített OCI/container registry (a platform docker registry-je):
       # docker login git.pte-dev.hu — image-cím: git.pte-dev.hu/<owner>/<image>

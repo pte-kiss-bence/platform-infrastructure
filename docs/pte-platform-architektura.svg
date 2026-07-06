@@ -1,0 +1,173 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1560" height="1000" viewBox="0 0 1560 1000" role="img" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
+  <title>PTE dev platform – architektúra</title>
+  <desc>Hálózati láthatatlanság: a platformnak nincs publikus portja, kifelé csak a PTE-Headscale beléptető réteg létezik. Két hálózati szint: tailnet az ember-szerver, privát L2 a szerver-szerver forgalomnak. A mentések a PTE-Backupra tervezett állapotban.</desc>
+  <defs>
+    <marker id="ap" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="#534AB7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="at" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="#0F6E56" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="aa" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="#BA7517" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="apl" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="#7F77DD" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="atl" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="#1D9E75" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <rect width="1560" height="1000" fill="#FFFFFF"/>
+
+  <!-- Cimblokk -->
+  <text x="60" y="58" font-size="26" font-weight="600" fill="#262625">PTE dev platform – architektúra</text>
+  <text x="60" y="86" font-size="14" fill="#5F5E5A">Hálózati láthatatlanság: a platformnak nincs publikus portja — kifelé csak a beléptető réteg létezik</text>
+  <text x="1500" y="58" font-size="12.5" fill="#888780" text-anchor="end">ADR-0004–0009 · 2026. július</text>
+
+  <!-- Aktor -->
+  <rect x="120" y="120" width="240" height="70" rx="10" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="1"/>
+  <text x="240" y="148" font-size="16" font-weight="600" fill="#2C2C2A" text-anchor="middle">Csapattag gépe</text>
+  <text x="240" y="170" font-size="12.5" fill="#5F5E5A" text-anchor="middle">Tailscale kliens · passkey</text>
+
+  <!-- Kulso cert/DNS lanc -->
+  <rect x="940" y="120" width="170" height="70" rx="10" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="1"/>
+  <text x="1025" y="148" font-size="16" font-weight="600" fill="#2C2C2A" text-anchor="middle">Rackhost DNS</text>
+  <text x="1025" y="170" font-size="12.5" fill="#5F5E5A" text-anchor="middle">csak vpn. · id. · CNAME</text>
+
+  <rect x="1140" y="120" width="164" height="70" rx="10" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="1"/>
+  <text x="1222" y="148" font-size="16" font-weight="600" fill="#2C2C2A" text-anchor="middle">deSEC</text>
+  <text x="1222" y="170" font-size="12.5" fill="#5F5E5A" text-anchor="middle">_acme-challenge zóna</text>
+
+  <rect x="1334" y="120" width="150" height="70" rx="10" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="1"/>
+  <text x="1409" y="148" font-size="16" font-weight="600" fill="#2C2C2A" text-anchor="middle">Let's Encrypt</text>
+  <text x="1409" y="170" font-size="12.5" fill="#5F5E5A" text-anchor="middle">ACME CA</text>
+
+  <text x="1123" y="112" font-size="11.5" fill="#888780" text-anchor="middle">CNAME</text>
+  <line x1="1110" y1="155" x2="1134" y2="155" stroke="#888780" stroke-width="1.4" marker-end="url(#aa)"/>
+  <text x="1319" y="112" font-size="11.5" fill="#888780" text-anchor="middle">validálás</text>
+  <line x1="1304" y1="155" x2="1328" y2="155" stroke="#888780" stroke-width="1.4" marker-end="url(#aa)"/>
+
+  <!-- Rackforest Cloud kontener -->
+  <rect x="80" y="250" width="1400" height="502" rx="18" fill="#FAFAF9" stroke="#D3D1C7" stroke-width="1"/>
+  <text x="104" y="288" font-size="18" font-weight="600" fill="#444441">Rackforest Cloud</text>
+
+  <!-- Belepteto reteg -->
+  <rect x="104" y="320" width="456" height="320" rx="14" fill="#FAEEDA" fill-opacity="0.45" stroke="#BA7517" stroke-width="1.2" stroke-dasharray="7 5"/>
+  <text x="128" y="354" font-size="17" font-weight="600" fill="#633806">PTE-Headscale — beléptető réteg</text>
+  <text x="128" y="376" font-size="12.5" fill="#854F0B">az egyetlen publikus kivétel: 80 · 443 · 3478/udp</text>
+
+  <rect x="128" y="396" width="196" height="76" rx="10" fill="#FAEEDA" stroke="#854F0B" stroke-width="1"/>
+  <text x="226" y="427" font-size="16" font-weight="600" fill="#412402" text-anchor="middle">Caddy</text>
+  <text x="226" y="451" font-size="12.5" fill="#854F0B" text-anchor="middle">:80/:443 · reverse proxy</text>
+
+  <rect x="340" y="396" width="196" height="76" rx="10" fill="#FAEEDA" stroke="#854F0B" stroke-width="1"/>
+  <text x="438" y="427" font-size="16" font-weight="600" fill="#412402" text-anchor="middle">Headscale</text>
+  <text x="438" y="451" font-size="12.5" fill="#854F0B" text-anchor="middle">kontrolplane + DERP</text>
+
+  <rect x="128" y="496" width="196" height="76" rx="10" fill="#FAEEDA" stroke="#854F0B" stroke-width="1"/>
+  <text x="226" y="527" font-size="16" font-weight="600" fill="#412402" text-anchor="middle">Pocket ID</text>
+  <text x="226" y="551" font-size="12.5" fill="#854F0B" text-anchor="middle">passkey OIDC IdP</text>
+
+  <rect x="340" y="496" width="196" height="76" rx="10" fill="#FAEEDA" stroke="#854F0B" stroke-width="1"/>
+  <text x="438" y="527" font-size="16" font-weight="600" fill="#412402" text-anchor="middle">tailnet-resolver</text>
+  <text x="438" y="551" font-size="12.5" fill="#854F0B" text-anchor="middle">dnsmasq · split DNS</text>
+
+  <text x="128" y="614" font-size="12" fill="#854F0B">kiesésekor a platform belső működése (privát L2) megy tovább</text>
+
+  <!-- Platform zona -->
+  <rect x="600" y="320" width="856" height="396" rx="14" fill="#EEEDFE" fill-opacity="0.4" stroke="#7F77DD" stroke-width="1.2" stroke-dasharray="7 5"/>
+  <text x="624" y="354" font-size="17" font-weight="600" fill="#3C3489">Platform — publikusan láthatatlan</text>
+  <text x="624" y="376" font-size="12.5" fill="#534AB7">tűzfal: csak tailnet + privát L2</text>
+
+  <rect x="624" y="396" width="240" height="104" rx="10" fill="#EEEDFE" stroke="#534AB7" stroke-width="1"/>
+  <text x="744" y="426" font-size="16" font-weight="600" fill="#26215C" text-anchor="middle">PTE-Forgejo</text>
+  <text x="744" y="452" font-size="12.5" fill="#534AB7" text-anchor="middle">git + Actions + OCI registry</text>
+  <text x="744" y="474" font-size="12.5" fill="#534AB7" text-anchor="middle">web :443 · git SSH :2222</text>
+
+  <rect x="908" y="396" width="240" height="104" rx="10" fill="#EEEDFE" stroke="#534AB7" stroke-width="1"/>
+  <text x="1028" y="426" font-size="16" font-weight="600" fill="#26215C" text-anchor="middle">PTE-Forgejo-Runner-1</text>
+  <text x="1028" y="452" font-size="12.5" fill="#534AB7" text-anchor="middle">CI jobok DinD-ben</text>
+  <text x="1028" y="474" font-size="12.5" fill="#534AB7" text-anchor="middle">a host Dockerhez nem nyúl</text>
+
+  <rect x="1192" y="396" width="240" height="104" rx="10" fill="#EEEDFE" stroke="#534AB7" stroke-width="1"/>
+  <text x="1312" y="426" font-size="16" font-weight="600" fill="#26215C" text-anchor="middle">PTE-Dokploy</text>
+  <text x="1312" y="452" font-size="12.5" fill="#534AB7" text-anchor="middle">panel + Traefik</text>
+  <text x="1312" y="474" font-size="12.5" fill="#534AB7" text-anchor="middle">deploy SSH-n a privát L2-n</text>
+
+  <rect x="624" y="540" width="240" height="104" rx="10" fill="none" stroke="#7F77DD" stroke-width="1.2" stroke-dasharray="5 4"/>
+  <text x="744" y="570" font-size="16" font-weight="600" fill="#26215C" text-anchor="middle">PTE-Backup</text>
+  <text x="744" y="596" font-size="12.5" fill="#534AB7" text-anchor="middle">restic rest-server · append-only</text>
+  <text x="744" y="618" font-size="12.5" fill="#534AB7" text-anchor="middle">még nincs felhúzva (backlog)</text>
+
+  <rect x="908" y="540" width="240" height="104" rx="10" fill="#EEEDFE" stroke="#534AB7" stroke-width="1"/>
+  <text x="1028" y="570" font-size="16" font-weight="600" fill="#26215C" text-anchor="middle">PTE-Shared</text>
+  <text x="1028" y="596" font-size="12.5" fill="#534AB7" text-anchor="middle">a csapat belső tooljai</text>
+  <text x="1028" y="618" font-size="12.5" fill="#534AB7" text-anchor="middle">technikailag projekt-sablon</text>
+
+  <rect x="1192" y="540" width="240" height="104" rx="10" fill="#E1F5EE" stroke="#0F6E56" stroke-width="1"/>
+  <text x="1312" y="570" font-size="16" font-weight="600" fill="#04342C" text-anchor="middle">PTE-&lt;Projekt&gt; VPS-ek</text>
+  <text x="1312" y="596" font-size="12.5" fill="#0F6E56" text-anchor="middle">app-projektenként egy · Traefik</text>
+  <text x="1312" y="618" font-size="12.5" fill="#0F6E56" text-anchor="middle">env-ek: prod · staging · preview</text>
+
+  <text x="624" y="690" font-size="12" fill="#534AB7">minden gép rajta van a tailneten és a privát L2-n · publikus portja egyiknek sincs</text>
+
+  <!-- Nyilak -->
+  <line x1="300" y1="190" x2="300" y2="316" stroke="#BA7517" stroke-width="1.8" marker-end="url(#aa)"/>
+  <text x="314" y="236" font-size="12.5" fill="#854F0B">HTTPS 80/443 · STUN 3478</text>
+
+  <path d="M340 190 L340 212 L1028 212 L1028 316" fill="none" stroke="#534AB7" stroke-width="2.2" marker-end="url(#ap)"/>
+  <text x="644" y="200" font-size="12.5" fill="#534AB7">tailnet · WireGuard mesh (100.64.0.0/10)</text>
+
+  <line x1="904" y1="448" x2="868" y2="448" stroke="#0F6E56" stroke-width="1.8" marker-end="url(#at)"/>
+
+  <line x1="1312" y1="500" x2="1312" y2="536" stroke="#0F6E56" stroke-width="1.8" marker-end="url(#at)"/>
+
+  <line x1="744" y1="500" x2="744" y2="536" stroke="#1D9E75" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#atl)"/>
+
+  <line x1="560" y1="592" x2="618" y2="592" stroke="#7F77DD" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#apl)"/>
+
+  <line x1="1222" y1="316" x2="1222" y2="194" stroke="#BA7517" stroke-width="1.5" marker-end="url(#aa)"/>
+  <text x="1236" y="240" font-size="12.5" fill="#854F0B">DNS-01 challenge (TXT)</text>
+
+  <!-- Folyamat-jelzok -->
+  <circle cx="300" cy="272" r="11" fill="#993C1D"/>
+  <text x="300" y="276" font-size="12" font-weight="600" fill="#FFFFFF" text-anchor="middle">1</text>
+  <circle cx="620" cy="212" r="11" fill="#993C1D"/>
+  <text x="620" y="216" font-size="12" font-weight="600" fill="#FFFFFF" text-anchor="middle">2</text>
+  <circle cx="886" cy="420" r="11" fill="#993C1D"/>
+  <text x="886" y="424" font-size="12" font-weight="600" fill="#FFFFFF" text-anchor="middle">3</text>
+  <circle cx="744" cy="518" r="11" fill="#993C1D"/>
+  <text x="744" y="522" font-size="12" font-weight="600" fill="#FFFFFF" text-anchor="middle">4</text>
+
+  <!-- Igy mukodik -->
+  <text x="80" y="794" font-size="14" font-weight="600" fill="#262625">Így működik</text>
+  <circle cx="89" cy="818" r="10" fill="#993C1D"/>
+  <text x="89" y="822" font-size="11" font-weight="600" fill="#FFFFFF" text-anchor="middle">1</text>
+  <text x="108" y="822" font-size="13" fill="#444441">belépés: passkey login (Pocket ID) + node-regisztráció (Headscale) — HTTPS 443</text>
+  <circle cx="89" cy="842" r="10" fill="#993C1D"/>
+  <text x="89" y="846" font-size="11" font-weight="600" fill="#FFFFFF" text-anchor="middle">2</text>
+  <text x="108" y="846" font-size="13" fill="#444441">napi munka: WireGuard mesh a tailneten közvetlenül a gépekig · nevek split DNS-sel</text>
+  <circle cx="89" cy="866" r="10" fill="#993C1D"/>
+  <text x="89" y="870" font-size="11" font-weight="600" fill="#FFFFFF" text-anchor="middle">3</text>
+  <text x="108" y="870" font-size="13" fill="#444441">belső működés a privát L2-n: CI (runner → Forgejo) és deploy — a beléptető kiesésekor is megy</text>
+  <circle cx="89" cy="890" r="10" fill="#993C1D"/>
+  <text x="89" y="894" font-size="11" font-weight="600" fill="#FFFFFF" text-anchor="middle">4</text>
+  <text x="108" y="894" font-size="13" fill="#444441">mentések a PTE-Backupra: restic az L2-n, Headscale-dump a tailneten — tervezett</text>
+
+  <!-- Jelmagyarazat -->
+  <text x="880" y="794" font-size="14" font-weight="600" fill="#262625">Jelmagyarázat</text>
+  <line x1="880" y1="814" x2="920" y2="814" stroke="#534AB7" stroke-width="2.2"/>
+  <text x="930" y="818" font-size="13" fill="#444441">tailnet — ember → szerver (WireGuard mesh)</text>
+  <line x1="880" y1="838" x2="920" y2="838" stroke="#0F6E56" stroke-width="1.8"/>
+  <text x="930" y="842" font-size="13" fill="#444441">privát L2 — szerver ↔ szerver (10.10.0.0/24)</text>
+  <line x1="880" y1="862" x2="920" y2="862" stroke="#BA7517" stroke-width="1.8"/>
+  <text x="930" y="866" font-size="13" fill="#444441">publikus forgalom — csak a beléptető rétegig · cert/DNS</text>
+  <line x1="880" y1="886" x2="920" y2="886" stroke="#1D9E75" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <text x="930" y="890" font-size="13" fill="#444441">tervezett: restic mentés a privát L2-n</text>
+  <line x1="880" y1="910" x2="920" y2="910" stroke="#7F77DD" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <text x="930" y="914" font-size="13" fill="#444441">tervezett: Headscale-dump a tailneten</text>
+
+  <text x="80" y="948" font-size="12" fill="#5F5E5A">Kívülről se név, se port: a *.pte-dev.hu nevekre NXDOMAIN, minden gépen minden port zárva — kivéve a beléptető réteg 80/443 · 3478/udp portjait.</text>
+</svg>

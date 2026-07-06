@@ -9,6 +9,16 @@ DNS-törlés) a legvégén van.
 Cél-verifikáció minden fázis végén van; ha elakadsz, a fázis elején lévő
 állapot még teljesen működőképes.
 
+## Állapot (2026-07-06)
+
+- **Kész**: 0–10. fázis — a backup-lépések kivételével (a 3. fázis 1. lépése,
+  a PTE-Backup VPS, kimaradt; így az 5. fázis végi backup-tűzfalzárás is).
+- **Folyamatban**: 12. fázis — az első csapattag onboardingja sikeresen
+  lezárult, a többiek hátravannak.
+- **Hátra**: PTE-Backup VPS felhúzása (3. fázis 1. lépés + tűzfalzárás),
+  11. fázis (mentés élesítés), majd a záró állapot-ellenőrzés. Követés:
+  [backlog 2. tétel](../backlog.md).
+
 ## 0. fázis — Előkészületek (gép-munka nélkül)
 
 1. **deSEC fiók + zóna**: regisztrálj a <https://desec.io>-n, hozz létre egy

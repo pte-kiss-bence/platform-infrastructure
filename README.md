@@ -4,9 +4,12 @@ A PTE dev platform infrastruktúrája kódként: Dokploy PaaS, Forgejo + runner,
 Headscale VPN és backup — Rackforest VPS-eken. Cloud-init fájlok, compose-ok,
 runbookok és döntések laknak itt; a forrás-igazság ez a repo.
 
-**Állapot**: a VPN-átállás (hálózati láthatatlanság, ADR-0004–0009)
-folyamatban van — a vezérfonal a
-[docs/runbooks/vpn-atallas.md](docs/runbooks/vpn-atallas.md).
+**Állapot**: a VPN-átállás hálózati része kész (ADR-0004–0009;
+[vpn-atallas](docs/runbooks/vpn-atallas.md) 0–10. fázis, a backup-lépések
+kivételével); az onboarding folyamatban (az első tag sikeresen fent). Hátra:
+a PTE-Backup gép felhúzása és a mentés-élesítés (3. fázis backup-lépése +
+11. fázis), utána a záró állapot-ellenőrzés. Részletek:
+[docs/backlog.md](docs/backlog.md).
 
 ## Térkép
 

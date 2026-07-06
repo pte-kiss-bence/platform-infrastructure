@@ -16,11 +16,19 @@ kell: PR-eseményre deploy a Dokploy API-n át, PR-zárásra törlés. Az infra
   [services/projekt/RUNBOOK.md](../services/projekt/RUNBOOK.md) (Environmentek)
 - Addig: kézi preview-deploy + kézi törlés.
 
-## 2. Platform-szintű mentések bekötése
+## 2. Backup gép felhúzása + mentések élesítése
 
-Ma csak a beléptető réteg ment (napi timer). A Forgejo adat (git repók +
-Postgres) és az app-adatbázisok restic-mentése a backup gépre (privát L2-n)
-nincs bekötve — a topológia-ábrán az él szaggatott, amíg ez él nem lesz.
+Ma **semmilyen mentés nem fut, és a PTE-Backup VPS sincs felhúzva** — a
+[vpn-átállás](runbooks/vpn-atallas.md) 3. fázisának backup-lépése kimaradt.
+Teendők sorrendben:
+
+1. PTE-Backup VPS ([services/backup/RUNBOOK.md](../services/backup/RUNBOOK.md)
+   1. lépés) + tűzfalzárás (4. lépés);
+2. vpn-átállás 11. fázis: beléptető réteg mentése (restic init + timer +
+   visszaállítási próba);
+3. platform-mentések bekötése: Forgejo adat (git repók + Postgres) és
+   app-adatbázisok restic-mentése privát L2-n — a topológia-ábrán az élek
+   szaggatottak, amíg ez nem él.
 
 - Forrás: [ADR-0008](adr/0008-dedikalt-backup-vps-restic-append-only.md),
   [architektura.md](architektura.md) 4. flow
@@ -38,7 +46,8 @@ védelem. `restic copy` külső célra (másik szolgáltató vagy otthoni gép).
 
 A Dokploy és Forgejo RUNBOOK ma callout-mintával él: a törzsszöveg még a
 publikus (átállás előtti) világot írja le, a „VPN-világ" blokk mondja meg,
-mit hagyj ki. Az átállás záró állapot-ellenőrzése után a friss provisionálás
+mit hagyj ki. A mentés-élesítés (vpn-átállás 11. fázis) és a záró
+állapot-ellenőrzés után a friss provisionálás
 legyen a fő szöveg: legacy lépések (publikus DNS, LE HTTP cert, `domain`
 fázis) törlése (a git history őrzi), callout-blokkok ki. Ugyanekkor
 törölhető a CONTEXT.md „DNS-polling guard" szócikke, és átnézendő a
